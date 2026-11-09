@@ -1,0 +1,28 @@
+{
+  "name": "auragen-backend",
+  "version": "1.0.0",
+  "description": "AuraGen - Self-Healing Generative UI via Cognitive Load (Week 1 LangChain.js Code-Gen Pipeline)",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node tests/test-codegen.js",
+    "test:mock": "node tests/test-codegen.js --mock"
+  },
+  "keywords": [
+    "auragen",
+    "generative-ui",
+    "langchain",
+    "openai",
+    "gpt-4o",
+    "cognitive-load",
+    "self-healing-ui"
+  ],
+  "author": "Infotact Solutions",
+  "license": "ISC",
+  "dependencies": {
+    "@langchain/core": "^1.3.5",
+    "@langchain/openai": "^1.8.2",
+    "dotenv": "^18.0.10"
+  }
+}
