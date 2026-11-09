@@ -191,3 +191,4 @@ export async function generateComponent(
     `[AuraGen Code-Gen] Failed to generate a valid React component after ${totalAttempts} attempt(s). Last error: ${lastError?.message || "Unknown error"}`
   );
 }
+

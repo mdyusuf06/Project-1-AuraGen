@@ -102,3 +102,4 @@ Your mission is to generate a dynamic, self-healing, conversational React compon
      \`\`\`
    - Do NOT include introductory text, conversational greetings, or postscript explanations.`;
 }
+
