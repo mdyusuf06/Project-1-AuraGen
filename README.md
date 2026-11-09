@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # AuraGen: Self-Healing Generative UI via Cognitive Load
 ### Week 1: LangChain.js Code-Generation Pipeline
 
@@ -227,3 +228,6 @@ console.log(rawCode);
 - **Week 3**: Framer Motion layout morphing transitions & WebSocket streaming server.
 - **Week 4**: Token streaming latency optimization (< 2s) & automated fallback degradation.
 
+=======
+# Project-1---AuraGen-Infotact-Solutions-
+>>>>>>> d347c73b9813367e22c3cc690045cfb2aa75217a
