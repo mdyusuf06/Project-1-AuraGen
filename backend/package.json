@@ -1,0 +1,26 @@
+{
+  "name": "auragen-backend",
+  "version": "1.0.0",
+  "description": "AuraGen Week 1 Node.js WebSocket Telemetry & Code-Gen Server",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node tests/test-ws-server.js"
+  },
+  "keywords": [
+    "auragen",
+    "websocket",
+    "ws",
+    "telemetry",
+    "cognitive-load"
+  ],
+  "author": "Infotact Solutions",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "ws": "^8.18.1"
+  }
+}
+

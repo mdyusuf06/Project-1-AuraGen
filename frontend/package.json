@@ -1,0 +1,23 @@
+{
+  "name": "auragen-frontend",
+  "version": "1.0.0",
+  "description": "AuraGen Week 1 Next.js + Tailwind Frontend (Telemetry Client & Complex Financial Form Demo)",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "^15.2.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17"
+  }
+}
+

@@ -1,0 +1,17 @@
+{
+  "name": "auragen-monorepo",
+  "version": "1.0.0",
+  "description": "AuraGen: Self-Healing Generative UI via Cognitive Load (Week 1 Full-Stack Monorepo)",
+  "private": true,
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "install:all": "npm --prefix backend install && npm --prefix frontend install",
+    "test:backend": "npm --prefix backend test",
+    "build:frontend": "npm --prefix frontend run build"
+  },
+  "author": "Infotact Solutions",
+  "license": "ISC"
+}
+
