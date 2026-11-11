@@ -7,38 +7,90 @@ import {
 } from "./config/constants.js";
 import { validateTelemetryMessage } from "./validators/telemetryValidator.js";
 import { generateComponent } from "./services/codeGenService.js";
+import { createSessionStore } from "./store/sessionStore.js";
 
 /**
  * Creates the HTTP + WebSocket server instance for AuraGen.
- * Supports dependency injection of `codeGenerator` for automated testing.
+ * Supports dependency injection of `codeGenerator` and `sessionStore` for testing.
  */
 export function createAuraGenServer({
   port = WS_PORT,
   threshold = COGNITIVE_LOAD_THRESHOLD,
   cooldownMs = GENERATION_COOLDOWN_MS,
-  codeGenerator = generateComponent
+  codeGenerator = generateComponent,
+  sessionStore = createSessionStore()
 } = {}) {
-  // Per-session generation tracking to avoid duplicate concurrent LLM invocations
-  const sessionStates = new Map();
+  // Per-session generation cooldown/in-flight lock
+  const generationLocks = new Map();
+
+  function sendJson(res, statusCode, payload) {
+    res.writeHead(statusCode, {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type"
+    });
+    res.end(JSON.stringify(payload));
+  }
 
   const httpServer = http.createServer((req, res) => {
-    if (req.method === "GET" && req.url === "/health") {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(
-        JSON.stringify({
-          status: "ok",
-          service: "auragen-websocket-server",
-          threshold,
-          cooldownMs,
-          connectedClients: wss.clients.size,
-          timestamp: Date.now()
-        })
-      );
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type"
+      });
+      res.end();
       return;
     }
 
-    res.writeHead(404, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "Not found. Connect via WebSocket or GET /health." }));
+    const requestUrl = new URL(req.url || "/", "http://localhost");
+    const pathname = requestUrl.pathname;
+
+    // Health check endpoint
+    if (req.method === "GET" && pathname === "/health") {
+      sendJson(res, 200, {
+        status: "ok",
+        service: "auragen-websocket-server",
+        threshold,
+        cooldownMs,
+        connectedClients: wss.clients.size,
+        activeSessions: sessionStore.size,
+        timestamp: Date.now()
+      });
+      return;
+    }
+
+    // List all tracked sessions
+    if (req.method === "GET" && pathname === "/api/sessions") {
+      sendJson(res, 200, {
+        sessions: sessionStore.listSessions(),
+        total: sessionStore.size
+      });
+      return;
+    }
+
+    // Historical friction metrics for a specific session: GET /api/sessions/:sessionId/metrics
+    const sessionMetricsMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/metrics$/);
+    if (req.method === "GET" && sessionMetricsMatch) {
+      const sessionId = decodeURIComponent(sessionMetricsMatch[1]);
+      const metrics = sessionStore.getSessionMetrics(sessionId);
+
+      if (!metrics) {
+        sendJson(res, 404, {
+          error: "Session not found",
+          sessionId
+        });
+        return;
+      }
+
+      sendJson(res, 200, metrics);
+      return;
+    }
+
+    sendJson(res, 404, {
+      error: "Not found. Available routes: GET /health, GET /api/sessions, GET /api/sessions/:sessionId/metrics"
+    });
   });
 
   const wss = new WebSocketServer({ server: httpServer });
@@ -68,7 +120,7 @@ export function createAuraGenServer({
       const validation = validateTelemetryMessage(rawData);
 
       if (!validation.valid) {
-        console.warn(`[WS] Rejected invalid telemetry message:`, validation.errors);
+        console.warn(`[WS] Rejected invalid telemetry message (Zod):`, validation.errors);
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(
             JSON.stringify({
@@ -82,74 +134,98 @@ export function createAuraGenServer({
       }
 
       const telemetry = validation.data;
-      const { sessionId, timestamp, metrics, cognitiveLoadScore, activeField, userInput, formFields } = telemetry;
+      const {
+        sessionId,
+        timestamp,
+        metrics,
+        instantScore,
+        rollingAverageScore,
+        activeFieldId,
+        formStateSnapshot,
+        formFields
+      } = telemetry;
 
-      // Structured telemetry logging
+      // Aggregate packet into the in-memory LRU session store
+      sessionStore.recordTelemetry(telemetry, threshold);
+
+      const snapshotFieldCount = formStateSnapshot?.values
+        ? Object.keys(formStateSnapshot.values).filter((k) => formStateSnapshot.values[k] !== "").length
+        : 0;
+
       console.log(
-        `[Telemetry] ${new Date(timestamp).toISOString()} | session="${sessionId}" | field="${activeField || "none"}" | score=${cognitiveLoadScore}/${threshold} | vel=${metrics.mouseVelocity} | hes=${metrics.hesitationMs}ms | rage=${metrics.rageClicks} | errRate=${metrics.clickErrorRate}`
+        `[Telemetry] ${new Date(timestamp).toISOString()} | session="${sessionId}" | field="${activeFieldId || "none"}" | instant=${instantScore} | rolling5s=${rollingAverageScore}/${threshold} | vel=${metrics.mouseVelocity} | hes=${metrics.hesitationMs}ms | rage=${metrics.rageClicks}${formStateSnapshot ? ` | snapshotFields=${snapshotFieldCount}` : ""}`
       );
 
-      // Check cognitive load threshold
-      if (cognitiveLoadScore < threshold) {
+      // Evaluate threshold using the smoothed 5-second rolling average score
+      if (rollingAverageScore < threshold) {
         return;
       }
 
       // Guard against flooding generation requests for the same session/field during cooldown
       const now = Date.now();
-      const state = sessionStates.get(sessionId) || {
+      const lockState = generationLocks.get(sessionId) || {
         inFlight: false,
         lastTriggeredAt: 0,
         lastField: null
       };
 
-      if (state.inFlight) {
+      if (lockState.inFlight) {
         console.log(`[CodeGen] Generation already in flight for session "${sessionId}". Skipping.`);
         return;
       }
 
       const withinCooldown =
-        now - state.lastTriggeredAt < cooldownMs && state.lastField === activeField;
+        now - lockState.lastTriggeredAt < cooldownMs && lockState.lastField === activeFieldId;
 
       if (withinCooldown) {
         console.log(
-          `[CodeGen] Cooldown active for session "${sessionId}" on field "${activeField}". Skipping duplicate trigger.`
+          `[CodeGen] Cooldown active for session "${sessionId}" on field "${activeFieldId}". Skipping duplicate trigger.`
         );
         return;
       }
 
-      state.inFlight = true;
-      state.lastField = activeField;
-      sessionStates.set(sessionId, state);
+      lockState.inFlight = true;
+      lockState.lastField = activeFieldId;
+      generationLocks.set(sessionId, lockState);
 
       console.log(
-        `[CodeGen] 🚨 Cognitive load threshold reached (${cognitiveLoadScore} >= ${threshold}) at "${activeField}". Calling generateComponent()...`
+        `[CodeGen] 🚨 Threshold breached (rolling5s=${rollingAverageScore} >= ${threshold}, instant=${instantScore}) at "${activeFieldId}". Calling generateComponent()...`
       );
 
       try {
+        const preservedUserInput = formStateSnapshot?.values || telemetry.userInput || {};
         const code = await codeGenerator({
-          activeField: activeField || "annualIncome",
+          activeField: activeFieldId || "annualIncome",
           formFields,
-          userInput,
-          score: cognitiveLoadScore
+          userInput: preservedUserInput,
+          domContext: formStateSnapshot?.domContext,
+          score: rollingAverageScore
         });
 
-        state.lastTriggeredAt = Date.now();
-        state.inFlight = false;
-        sessionStates.set(sessionId, state);
+        lockState.lastTriggeredAt = Date.now();
+        lockState.inFlight = false;
+        generationLocks.set(sessionId, lockState);
+
+        sessionStore.recordComponentGeneration(sessionId, {
+          activeFieldId: activeFieldId || "annualIncome",
+          score: rollingAverageScore,
+          codeLength: code.length
+        });
 
         if (ws.readyState === WebSocket.OPEN) {
-          const reply = {
-            type: "component",
-            code
-          };
-          ws.send(JSON.stringify(reply));
+          ws.send(
+            JSON.stringify({
+              type: "component",
+              code
+            })
+          );
           console.log(
-            `[CodeGen] ✅ Sent { type: "component", code } (${code.length} chars) to session "${sessionId}".`
+            `[CodeGen] ✅ Sent { type: "component", code } (${code.length} chars, preservedFields=${Object.keys(preservedUserInput).length}) to session "${sessionId}".`
           );
         }
       } catch (err) {
-        state.inFlight = false;
-        sessionStates.set(sessionId, state);
+        lockState.inFlight = false;
+        generationLocks.set(sessionId, lockState);
         console.error(`[CodeGen] ❌ Failed to generate component for session "${sessionId}":`, err);
 
         if (ws.readyState === WebSocket.OPEN) {
@@ -198,11 +274,12 @@ export function createAuraGenServer({
         const boundPort = typeof address === "object" && address ? address.port : port;
         console.log("=================================================================");
         console.log(`🚀 AuraGen WebSocket Server listening on ws://localhost:${boundPort}`);
-        console.log(`🩺 Health check endpoint: http://localhost:${boundPort}/health`);
+        console.log(`🩺 Health check: http://localhost:${boundPort}/health`);
+        console.log(`📊 Session metrics API: http://localhost:${boundPort}/api/sessions/:sessionId/metrics`);
         console.log(`🧠 Cognitive Load Threshold: ${threshold}`);
         console.log(`⏱️  Generation Cooldown: ${cooldownMs}ms`);
         console.log("=================================================================");
-        resolve({ port: boundPort, httpServer, wss });
+        resolve({ port: boundPort, httpServer, wss, sessionStore });
       });
     });
   }
@@ -219,7 +296,7 @@ export function createAuraGenServer({
     });
   }
 
-  return { httpServer, wss, start, stop };
+  return { httpServer, wss, sessionStore, start, stop };
 }
 
 // Start server directly when run via `node src/server.js`
@@ -240,4 +317,3 @@ if (isDirectExecution) {
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 }
-

@@ -1,30 +1,67 @@
+import { z } from "zod";
+
 /**
- * Validates incoming WebSocket telemetry payloads against the shared AuraGen JSON format:
- * {
- *   "type": "telemetry",
- *   "sessionId": "abc123",
- *   "timestamp": 1700000000000,
- *   "metrics": {
- *     "mouseVelocity": 0,
- *     "hesitationMs": 0,
- *     "rageClicks": 0,
- *     "clickErrorRate": 0
- *   },
- *   "cognitiveLoadScore": 0,
- *   "activeField": "annualIncome"
- * }
+ * Strict Zod Schema for incoming AuraGen WebSocket telemetry payloads.
+ * Supports shared Week 1 telemetry + Week 2/3 Sliding Window scores,
+ * cursor coordinates, activeFieldId, and formStateSnapshot.
  */
+export const TelemetryMetricsSchema = z.object({
+  mouseVelocity: z.number().finite().min(0),
+  hesitationMs: z.number().finite().min(0),
+  rageClicks: z.number().finite().min(0),
+  clickErrorRate: z.number().finite().min(0).max(1),
+  clickErrorCount: z.number().finite().min(0).optional()
+});
 
-function isFiniteNonNegativeNumber(val) {
-  return typeof val === "number" && Number.isFinite(val) && val >= 0;
-}
+export const CursorPositionSchema = z.object({
+  x: z.number().finite().min(0),
+  y: z.number().finite().min(0)
+});
 
+export const DomContextSchema = z.object({
+  activeFieldId: z.string().optional(),
+  activeFieldLabel: z.string().optional(),
+  activeSectionId: z.string().optional(),
+  completedFieldsCount: z.number().int().min(0).optional(),
+  totalFieldsCount: z.number().int().min(0).optional(),
+  validationErrors: z.record(z.string(), z.string()).optional(),
+  scrollY: z.number().finite().min(0).optional()
+});
+
+export const FormStateSnapshotSchema = z.object({
+  values: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])),
+  domContext: DomContextSchema.optional(),
+  capturedAt: z.number().finite().positive().optional()
+});
+
+export const TelemetryPayloadSchema = z.object({
+  type: z.literal("telemetry"),
+  sessionId: z.string().trim().min(1, "sessionId must be a non-empty string"),
+  timestamp: z.number().finite().positive("timestamp must be a positive Unix ms number"),
+  metrics: TelemetryMetricsSchema,
+  cognitiveLoadScore: z.number().finite().min(0).max(100),
+  instantScore: z.number().finite().min(0).max(100).optional(),
+  rollingAverageScore: z.number().finite().min(0).max(100).optional(),
+  activeField: z.string(),
+  activeFieldId: z.string().optional(),
+  cursor: CursorPositionSchema.optional(),
+  formStateSnapshot: FormStateSnapshotSchema.optional(),
+  userInput: z.record(z.string(), z.unknown()).optional(),
+  formFields: z.array(z.record(z.string(), z.unknown())).optional()
+});
+
+/**
+ * Validates and normalizes an incoming WebSocket telemetry message using Zod.
+ *
+ * @param {string|Buffer|object} rawMessage
+ * @returns {{ valid: true, data: object } | { valid: false, errors: string[] }}
+ */
 export function validateTelemetryMessage(rawMessage) {
-  let payload;
+  let parsedJson;
 
   if (typeof rawMessage === "string") {
     try {
-      payload = JSON.parse(rawMessage);
+      parsedJson = JSON.parse(rawMessage);
     } catch {
       return {
         valid: false,
@@ -33,7 +70,7 @@ export function validateTelemetryMessage(rawMessage) {
     }
   } else if (Buffer.isBuffer(rawMessage)) {
     try {
-      payload = JSON.parse(rawMessage.toString("utf-8"));
+      parsedJson = JSON.parse(rawMessage.toString("utf-8"));
     } catch {
       return {
         valid: false,
@@ -41,7 +78,7 @@ export function validateTelemetryMessage(rawMessage) {
       };
     }
   } else if (rawMessage && typeof rawMessage === "object") {
-    payload = rawMessage;
+    parsedJson = rawMessage;
   } else {
     return {
       valid: false,
@@ -49,89 +86,36 @@ export function validateTelemetryMessage(rawMessage) {
     };
   }
 
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+  const result = TelemetryPayloadSchema.safeParse(parsedJson);
+
+  if (!result.success) {
+    const errors = result.error.issues.map((issue) => {
+      const path = issue.path.length > 0 ? issue.path.join(".") : "payload";
+      return `${path}: ${issue.message}`;
+    });
+
     return {
       valid: false,
-      errors: ["Payload must be a JSON object."]
+      errors
     };
   }
 
-  const errors = [];
-
-  if (payload.type !== "telemetry") {
-    errors.push(`Expected "type" to be "telemetry", received "${String(payload.type)}".`);
-  }
-
-  if (typeof payload.sessionId !== "string" || payload.sessionId.trim().length === 0) {
-    errors.push(`"sessionId" must be a non-empty string.`);
-  }
-
-  if (typeof payload.timestamp !== "number" || !Number.isFinite(payload.timestamp) || payload.timestamp <= 0) {
-    errors.push(`"timestamp" must be a positive finite Unix timestamp number.`);
-  }
-
-  if (!payload.metrics || typeof payload.metrics !== "object" || Array.isArray(payload.metrics)) {
-    errors.push(`"metrics" must be an object containing mouseVelocity, hesitationMs, rageClicks, and clickErrorRate.`);
-  } else {
-    const { mouseVelocity, hesitationMs, rageClicks, clickErrorRate } = payload.metrics;
-
-    if (!isFiniteNonNegativeNumber(mouseVelocity)) {
-      errors.push(`"metrics.mouseVelocity" must be a non-negative number.`);
-    }
-    if (!isFiniteNonNegativeNumber(hesitationMs)) {
-      errors.push(`"metrics.hesitationMs" must be a non-negative number.`);
-    }
-    if (!isFiniteNonNegativeNumber(rageClicks)) {
-      errors.push(`"metrics.rageClicks" must be a non-negative number.`);
-    }
-    if (!isFiniteNonNegativeNumber(clickErrorRate) || clickErrorRate > 1) {
-      errors.push(`"metrics.clickErrorRate" must be a number between 0 and 1.`);
-    }
-  }
-
-  if (
-    typeof payload.cognitiveLoadScore !== "number" ||
-    !Number.isFinite(payload.cognitiveLoadScore) ||
-    payload.cognitiveLoadScore < 0 ||
-    payload.cognitiveLoadScore > 100
-  ) {
-    errors.push(`"cognitiveLoadScore" must be a finite number between 0 and 100.`);
-  }
-
-  if (typeof payload.activeField !== "string") {
-    errors.push(`"activeField" must be a string.`);
-  }
-
-  if (payload.userInput !== undefined && (typeof payload.userInput !== "object" || Array.isArray(payload.userInput) || payload.userInput === null)) {
-    errors.push(`Optional "userInput" must be a plain object if provided.`);
-  }
-
-  if (payload.formFields !== undefined && !Array.isArray(payload.formFields)) {
-    errors.push(`Optional "formFields" must be an array if provided.`);
-  }
-
-  if (errors.length > 0) {
-    return { valid: false, errors };
-  }
+  const data = result.data;
+  const instantScore = data.instantScore ?? data.cognitiveLoadScore;
+  const rollingAverageScore = data.rollingAverageScore ?? data.cognitiveLoadScore;
+  const activeField = data.activeFieldId || data.activeField;
+  const userInput = data.formStateSnapshot?.values || data.userInput || {};
 
   return {
     valid: true,
     data: {
-      type: payload.type,
-      sessionId: payload.sessionId.trim(),
-      timestamp: payload.timestamp,
-      metrics: {
-        mouseVelocity: payload.metrics.mouseVelocity,
-        hesitationMs: payload.metrics.hesitationMs,
-        rageClicks: payload.metrics.rageClicks,
-        clickErrorRate: payload.metrics.clickErrorRate
-      },
-      cognitiveLoadScore: payload.cognitiveLoadScore,
-      activeField: payload.activeField,
-      // Optional downstream context (ready for Week 3 state preservation)
-      userInput: payload.userInput || {},
-      formFields: payload.formFields || null
+      ...data,
+      instantScore,
+      rollingAverageScore,
+      activeField,
+      activeFieldId: activeField,
+      userInput,
+      formFields: data.formFields || null
     }
   };
 }
-

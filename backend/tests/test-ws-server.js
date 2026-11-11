@@ -4,27 +4,28 @@ import { createAuraGenServer } from "../src/server.js";
 
 async function runBackendTests() {
   console.log("=================================================================");
-  console.log("🧪 AuraGen Backend WebSocket Server Integration Tests");
+  console.log("🧪 AuraGen Backend WebSocket & Session Store Integration Tests");
   console.log("=================================================================");
 
   const server = createAuraGenServer({
-    port: 0, // Let OS assign a free port
+    port: 0,
     threshold: 70,
     cooldownMs: 500
   });
 
   const { port } = await server.start();
   const wsUrl = `ws://localhost:${port}`;
+  const httpBase = `http://localhost:${port}`;
 
   try {
     // 1. Verify /health endpoint
-    const healthRes = await fetch(`http://localhost:${port}/health`);
+    const healthRes = await fetch(`${httpBase}/health`);
     assert.equal(healthRes.status, 200, "Health endpoint should return 200");
     const healthJson = await healthRes.json();
-    assert.equal(healthJson.status, "ok", "Health status should be ok");
+    assert.equal(healthJson.status, "ok");
     console.log("✅ Test 1 Passed: HTTP /health endpoint returned 200 OK");
 
-    // Connect WebSocket client and register message listener BEFORE waiting for open
+    // 2. Connect WebSocket client (register message listener BEFORE awaiting open)
     const ws = new WebSocket(wsUrl);
     const receivedMessages = [];
 
@@ -37,24 +38,33 @@ async function runBackendTests() {
       ws.on("error", reject);
     });
 
-    // Wait briefly for initial "connected" handshake message
     await new Promise((r) => setTimeout(r, 100));
-    assert.equal(receivedMessages[0]?.type, "connected", "Should receive connected handshake");
+    assert.equal(receivedMessages[0]?.type, "connected");
     console.log("✅ Test 2 Passed: WebSocket handshake received");
 
-    // 2. Test invalid telemetry rejection
-    ws.send(JSON.stringify({ type: "telemetry", cognitiveLoadScore: 999 }));
+    // 3. Test strict Zod invalid telemetry rejection
+    ws.send(
+      JSON.stringify({
+        type: "telemetry",
+        sessionId: "",
+        timestamp: -1,
+        metrics: { mouseVelocity: -5, hesitationMs: 0, rageClicks: 0, clickErrorRate: 2 },
+        cognitiveLoadScore: 999,
+        activeField: "annualIncome"
+      })
+    );
     await new Promise((r) => setTimeout(r, 100));
     const errorReply = receivedMessages.find((m) => m.type === "error");
-    assert.ok(errorReply, "Should receive error message for invalid telemetry");
-    console.log("✅ Test 3 Passed: Invalid telemetry rejected with structured error");
+    assert.ok(errorReply && errorReply.errors.length >= 4, "Zod should catch multiple invalid schema fields");
+    console.log("✅ Test 3 Passed: Zod validation rejected malformed telemetry payload");
 
-    // 3. Test valid telemetry BELOW threshold (should NOT trigger component)
+    // 4. Test valid telemetry BELOW threshold (instantScore & rollingAverageScore)
+    const sessionId = "test_sess_upgrade_01";
     const countBeforeLow = receivedMessages.length;
     ws.send(
       JSON.stringify({
         type: "telemetry",
-        sessionId: "test_sess_01",
+        sessionId,
         timestamp: Date.now(),
         metrics: {
           mouseVelocity: 120,
@@ -62,33 +72,54 @@ async function runBackendTests() {
           rageClicks: 0,
           clickErrorRate: 0.05
         },
-        cognitiveLoadScore: 32,
-        activeField: "fullName"
+        cognitiveLoadScore: 28,
+        instantScore: 32,
+        rollingAverageScore: 28,
+        activeField: "fullName",
+        activeFieldId: "fullName",
+        cursor: { x: 200, y: 150 }
       })
     );
     await new Promise((r) => setTimeout(r, 150));
     const componentAfterLow = receivedMessages.slice(countBeforeLow).find((m) => m.type === "component");
-    assert.equal(componentAfterLow, undefined, "Low score should NOT trigger component generation");
-    console.log("✅ Test 4 Passed: Low cognitiveLoadScore (32 < 70) logged without triggering generation");
+    assert.equal(componentAfterLow, undefined, "Low rollingAverageScore should NOT trigger component generation");
+    console.log("✅ Test 4 Passed: Low rollingAverageScore (28 < 70) stored without triggering generation");
 
-    // 4. Test valid telemetry ABOVE threshold (MUST trigger { type: "component", code })
+    // 5. Test valid telemetry ABOVE threshold WITH formStateSnapshot
     ws.send(
       JSON.stringify({
         type: "telemetry",
-        sessionId: "test_sess_01",
+        sessionId,
         timestamp: Date.now(),
         metrics: {
-          mouseVelocity: 540,
+          mouseVelocity: 640,
           hesitationMs: 12400,
           rageClicks: 6,
           clickErrorRate: 0.45
         },
-        cognitiveLoadScore: 86,
-        activeField: "annualIncome"
+        cognitiveLoadScore: 84,
+        instantScore: 91,
+        rollingAverageScore: 84,
+        activeField: "annualIncome",
+        activeFieldId: "annualIncome",
+        cursor: { x: 420, y: 310 },
+        formStateSnapshot: {
+          values: {
+            fullName: "Jordan Mercer",
+            email: "jordan@infotact.com",
+            taxId: "123-45-6789"
+          },
+          domContext: {
+            activeFieldId: "annualIncome",
+            activeFieldLabel: "Adjusted Gross Annual Income (USD)",
+            activeSectionId: "income",
+            completedFieldsCount: 3,
+            totalFieldsCount: 21
+          }
+        }
       })
     );
 
-    // Wait for component message
     const componentMsg = await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error("Timed out waiting for component reply")), 3000);
       const check = () => {
@@ -103,18 +134,39 @@ async function runBackendTests() {
       check();
     });
 
-    assert.equal(componentMsg.type, "component", "Reply type should be 'component'");
-    assert.ok(typeof componentMsg.code === "string" && componentMsg.code.length > 100, "Code string should be non-empty");
-    assert.ok(componentMsg.code.includes("export default function DynamicFormWizard"), "Code should include default export component");
-    assert.ok(componentMsg.code.includes("annualIncome"), "Code should reference activeField 'annualIncome'");
-    console.log("✅ Test 5 Passed: High cognitiveLoadScore (86 >= 70) triggered generateComponent() and returned { type: 'component', code }");
+    assert.equal(componentMsg.type, "component");
+    assert.ok(componentMsg.code.includes("export default function DynamicFormWizard"));
+    assert.ok(componentMsg.code.includes("Jordan Mercer"), "Stub should preserve formStateSnapshot.values");
+    assert.ok(componentMsg.code.includes("annualIncome"));
+    console.log("✅ Test 5 Passed: High rollingAverageScore (84 >= 70) triggered generateComponent() with preserved formStateSnapshot");
+
+    // 6. Test In-Memory Session Store API: GET /api/sessions/:sessionId/metrics
+    const metricsRes = await fetch(`${httpBase}/api/sessions/${sessionId}/metrics`);
+    assert.equal(metricsRes.status, 200, "Session metrics API should return 200");
+    const metricsJson = await metricsRes.json();
+
+    assert.equal(metricsJson.sessionId, sessionId);
+    assert.equal(metricsJson.summary.packetCount, 2);
+    assert.equal(metricsJson.summary.thresholdBreaches, 1);
+    assert.equal(metricsJson.summary.generatedComponentsCount, 1);
+    assert.equal(metricsJson.summary.peakInstantScore, 91);
+    assert.equal(metricsJson.summary.peakRollingScore, 84);
+    assert.equal(metricsJson.history.length, 2);
+    assert.equal(metricsJson.lastFormStateSnapshot.values.fullName, "Jordan Mercer");
+    assert.ok(metricsJson.fieldFrictionBreakdown.some((f) => f.fieldId === "annualIncome"));
+    console.log("✅ Test 6 Passed: GET /api/sessions/:sessionId/metrics returned aggregated history & snapshot");
+
+    // 7. Test 404 for unknown session
+    const missingRes = await fetch(`${httpBase}/api/sessions/does_not_exist/metrics`);
+    assert.equal(missingRes.status, 404);
+    console.log("✅ Test 7 Passed: Unknown session returned 404");
 
     ws.close();
   } finally {
     await server.stop();
   }
 
-  console.log("\n🎉 All Backend WebSocket Tests Passed!");
+  console.log("\n🎉 All Backend Zod, Sliding-Window, Snapshot, & Session Store Tests Passed!");
 }
 
 runBackendTests().catch((err) => {

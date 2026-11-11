@@ -1,22 +1,24 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { createAuraGenWsService } from "../services/wsService";
+import { createAuraGenWsService, WS_STATUS } from "../services/wsService";
+
+export { WS_STATUS };
 
 const DEFAULT_WS_URL =
   process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080";
 
 /**
- * React hook for managing AuraGen's WebSocket connection.
- * Features auto-reconnect with exponential backoff, live connection status,
- * `sendTelemetry`, and `onMessage`.
+ * React hook for managing AuraGen's WebSocket connection state machine
+ * (CONNECTING, CONNECTED, RECONNECTING, DISCONNECTED) with exponential backoff.
  *
  * @param {string} [url] - WebSocket endpoint URL
- * @param {object} [options] - Reconnect options
+ * @param {object} [options] - Exponential backoff options
  */
 export function useWebSocket(url = DEFAULT_WS_URL, options = {}) {
-  const [status, setStatus] = useState("disconnected");
+  const [status, setStatus] = useState(WS_STATUS.DISCONNECTED);
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
+  const [nextReconnectDelayMs, setNextReconnectDelayMs] = useState(0);
 
   const serviceRef = useRef(null);
   const pendingListenersRef = useRef(new Set());
@@ -25,16 +27,18 @@ export function useWebSocket(url = DEFAULT_WS_URL, options = {}) {
     const service = createAuraGenWsService(url, options);
     serviceRef.current = service;
 
-    // Attach any listeners registered prior to mount
     const unsubs = [];
     for (const listener of pendingListenersRef.current) {
       unsubs.push(service.onMessage(listener));
     }
 
-    const unsubStatus = service.onStatusChange(({ status: nextStatus, reconnectAttempt: attempt }) => {
-      setStatus(nextStatus);
-      setReconnectAttempt(attempt);
-    });
+    const unsubStatus = service.onStatusChange(
+      ({ status: nextStatus, reconnectAttempt: attempt, nextReconnectDelayMs: delayMs }) => {
+        setStatus(nextStatus);
+        setReconnectAttempt(attempt);
+        setNextReconnectDelayMs(delayMs || 0);
+      }
+    );
 
     service.connect();
 
@@ -74,11 +78,12 @@ export function useWebSocket(url = DEFAULT_WS_URL, options = {}) {
 
   return {
     status,
-    isConnected: status === "connected",
+    WS_STATUS,
+    isConnected: status === WS_STATUS.CONNECTED,
     reconnectAttempt,
+    nextReconnectDelayMs,
     sendTelemetry,
     onMessage,
     reconnect
   };
 }
-
