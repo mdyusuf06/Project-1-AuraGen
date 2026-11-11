@@ -161,7 +161,8 @@ export function createAuraGenWsService(url, options = {}) {
         mouseVelocity: Number(telemetry.metrics?.mouseVelocity ?? 0),
         hesitationMs: Number(telemetry.metrics?.hesitationMs ?? 0),
         rageClicks: Number(telemetry.metrics?.rageClicks ?? 0),
-        clickErrorRate: Number(telemetry.metrics?.clickErrorRate ?? 0)
+        clickErrorRate: Number(telemetry.metrics?.clickErrorRate ?? 0),
+        directionChanges: Number(telemetry.metrics?.directionChanges ?? 0)
       },
       cognitiveLoadScore: Number(telemetry.cognitiveLoadScore ?? 0),
       activeField: String(telemetry.activeField ?? "")

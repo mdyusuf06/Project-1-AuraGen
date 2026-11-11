@@ -30,14 +30,24 @@ export default function AuraGenDemoPage() {
   } = useWebSocket(WS_URL);
 
   const {
+    metrics,
+    score,
+    isFrustrated,
     telemetrySnapshot,
     triggerSimulatedFriction,
     resetTelemetry
   } = useTelemetry({
     sessionId,
     activeField,
+    threshold: serverThreshold,
+    streamIntervalMs: 1000,
     isConnected,
-    sendTelemetry
+    sendTelemetry,
+    onThreshold: (snapshot) => {
+      console.log(
+        `[Telemetry] 🚨 Cognitive Load Threshold Exceeded (${snapshot.cognitiveLoadScore} >= ${serverThreshold}) at "${snapshot.activeField}". Telemetry snapshot streamed.`
+      );
+    }
   });
 
   // Listen for WebSocket replies ({ type: "component", code }, "connected", "error")
