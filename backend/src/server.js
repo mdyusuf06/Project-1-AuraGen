@@ -7,6 +7,7 @@ import {
 } from "./config/constants.js";
 import { validateTelemetryMessage } from "./validators/telemetryValidator.js";
 import { generateComponent } from "./services/codeGenService.js";
+import { validateComponentAst } from "./services/astValidator.js";
 import { createSessionStore } from "./store/sessionStore.js";
 
 /**
@@ -194,13 +195,16 @@ export function createAuraGenServer({
 
       try {
         const preservedUserInput = formStateSnapshot?.values || telemetry.userInput || {};
-        const code = await codeGenerator({
+        const rawCode = await codeGenerator({
           activeField: activeFieldId || "annualIncome",
           formFields,
           userInput: preservedUserInput,
           domContext: formStateSnapshot?.domContext,
           score: rollingAverageScore
         });
+
+        // AST security validation before sending code to the client
+        const code = validateComponentAst(rawCode);
 
         lockState.lastTriggeredAt = Date.now();
         lockState.inFlight = false;
@@ -220,19 +224,22 @@ export function createAuraGenServer({
             })
           );
           console.log(
-            `[CodeGen] ✅ Sent { type: "component", code } (${code.length} chars, preservedFields=${Object.keys(preservedUserInput).length}) to session "${sessionId}".`
+            `[CodeGen] ✅ AST-validated & sent { type: "component", code } (${code.length} chars, preservedFields=${Object.keys(preservedUserInput).length}) to session "${sessionId}".`
           );
         }
       } catch (err) {
         lockState.inFlight = false;
         generationLocks.set(sessionId, lockState);
-        console.error(`[CodeGen] ❌ Failed to generate component for session "${sessionId}":`, err);
+        console.error(`[CodeGen] ❌ Blocked or failed component for session "${sessionId}":`, err.message);
 
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(
             JSON.stringify({
               type: "error",
-              message: "Component generation failed",
+              message:
+                err.name === "ASTSecurityError"
+                  ? "Generated component failed AST security validation"
+                  : "Component generation failed",
               details: err.message
             })
           );

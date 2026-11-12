@@ -1,11 +1,48 @@
 import assert from "node:assert/strict";
 import { WebSocket } from "ws";
 import { createAuraGenServer } from "../src/server.js";
+import { validateComponentAst, ASTSecurityError } from "../src/services/astValidator.js";
+
+function runAstValidatorUnitTests() {
+  console.log("\n🛡️  Running AST Validator Unit Tests...");
+
+  const safeCode = `
+    import React, { useState } from "react";
+    export default function SafeWizard({ initialValues = {} }) {
+      const [documentType, setDocumentType] = useState(initialValues.documentType || "W2");
+      return <div className="p-4"><input value={documentType} onChange={(e) => setDocumentType(e.target.value)} /></div>;
+    }
+  `;
+  const returned = validateComponentAst(safeCode);
+  assert.equal(returned, safeCode, "Safe JSX should pass and return the exact code string");
+
+  const unsafePayloads = [
+    { label: "window", code: `export default function Bad() { return <div>{window.location.href}</div>; }` },
+    { label: "document", code: `export default function Bad() { const c = document.cookie; return <div>{c}</div>; }` },
+    { label: "localStorage", code: `export default function Bad() { localStorage.setItem("x", "1"); return <div />; }` },
+    { label: "fetch", code: `export default function Bad() { fetch("https://evil.test"); return <div />; }` },
+    { label: "<script> tag", code: `export default function Bad() { return <div><script>alert(1)</script></div>; }` },
+    { label: "computed global access", code: `export default function Bad() { return <div>{globalThis["fetch"]("/x")}</div>; }` },
+    { label: "syntax error", code: `export default function Broken( { return <div>; }` }
+  ];
+
+  for (const { label, code } of unsafePayloads) {
+    assert.throws(
+      () => validateComponentAst(code),
+      (err) => err instanceof ASTSecurityError,
+      `AST validator must throw ASTSecurityError for ${label}`
+    );
+  }
+
+  console.log(`✅ AST Unit Tests Passed: Safe JSX (including "documentType") allowed; ${unsafePayloads.length} unsafe/malformed payloads blocked.`);
+}
 
 async function runBackendTests() {
   console.log("=================================================================");
   console.log("🧪 AuraGen Backend WebSocket & Session Store Integration Tests");
   console.log("=================================================================");
+
+  runAstValidatorUnitTests();
 
   const server = createAuraGenServer({
     port: 0,
@@ -166,7 +203,61 @@ async function runBackendTests() {
     await server.stop();
   }
 
-  console.log("\n🎉 All Backend Zod, Sliding-Window, Snapshot, & Session Store Tests Passed!");
+  // 8. Test server AST security gate rejects malicious codeGenerator output
+  const maliciousServer = createAuraGenServer({
+    port: 0,
+    threshold: 70,
+    cooldownMs: 100,
+    codeGenerator: async () =>
+      `export default function Evil() { fetch("https://attacker.test"); return <div><script>alert(1)</script></div>; }`
+  });
+  const { port: malPort } = await maliciousServer.start();
+  try {
+    const malWs = new WebSocket(`ws://localhost:${malPort}`);
+    const malMessages = [];
+    malWs.on("message", (raw) => malMessages.push(JSON.parse(raw.toString("utf-8"))));
+
+    await new Promise((resolve, reject) => {
+      malWs.on("open", resolve);
+      malWs.on("error", reject);
+    });
+
+    malWs.send(
+      JSON.stringify({
+        type: "telemetry",
+        sessionId: "test_malicious_block",
+        timestamp: Date.now(),
+        metrics: { mouseVelocity: 800, hesitationMs: 10000, rageClicks: 6, clickErrorRate: 0.5 },
+        cognitiveLoadScore: 90,
+        instantScore: 90,
+        rollingAverageScore: 90,
+        activeField: "annualIncome"
+      })
+    );
+
+    const astErrorMsg = await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("Timed out waiting for AST rejection error")), 3000);
+      const check = () => {
+        const err = malMessages.find((m) => m.type === "error");
+        if (err) {
+          clearTimeout(timeout);
+          resolve(err);
+        } else {
+          setTimeout(check, 50);
+        }
+      };
+      check();
+    });
+
+    assert.equal(astErrorMsg.message, "Generated component failed AST security validation");
+    assert.equal(malMessages.find((m) => m.type === "component"), undefined, "Unsafe component must never be sent");
+    console.log("✅ Test 8 Passed: WebSocket server blocked unsafe code via AST validator before sending");
+    malWs.close();
+  } finally {
+    await maliciousServer.stop();
+  }
+
+  console.log("\n🎉 All Backend AST Security, Zod, Sliding-Window, Snapshot, & Session Store Tests Passed!");
 }
 
 runBackendTests().catch((err) => {
