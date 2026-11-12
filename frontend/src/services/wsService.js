@@ -3,7 +3,7 @@
  * Features:
  *  - Explicit connection state machine (CONNECTING, CONNECTED, RECONNECTING, DISCONNECTED)
  *  - Auto-reconnect with exponential backoff + jitter
- *  - Telemetry serialization supporting Sliding Window scores & formStateSnapshot
+ *  - Telemetry serialization supporting Sliding Window scores, directionChanges, clickErrorCount & formStateSnapshot
  *  - Pub/sub message subscription (`onMessage`)
  */
 
@@ -178,7 +178,8 @@ export function createAuraGenWsService(url, options = {}) {
         hesitationMs: Number(telemetry.metrics?.hesitationMs ?? 0),
         rageClicks: Number(telemetry.metrics?.rageClicks ?? 0),
         clickErrorRate: Number(telemetry.metrics?.clickErrorRate ?? 0),
-        clickErrorCount: Number(telemetry.metrics?.clickErrorCount ?? 0)
+        clickErrorCount: Number(telemetry.metrics?.clickErrorCount ?? 0),
+        directionChanges: Number(telemetry.metrics?.directionChanges ?? 0)
       },
       cognitiveLoadScore: rollingScore,
       instantScore,

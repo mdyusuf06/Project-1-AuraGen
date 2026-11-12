@@ -30,7 +30,6 @@ const STATUS_BADGE = {
  * Interpolates trajectory stroke color from Green (smooth) -> Amber -> Red (erratic/hesitant).
  */
 function getTrajectoryColor(velocity, hesitationMs, alpha) {
-  // Normalize severity ratio [0, 1]
   const velRatio = Math.min(1, Math.max(0, (velocity - 150) / 700));
   const hesRatio = Math.min(1, Math.max(0, (hesitationMs - 2000) / 5000));
   const severity = Math.max(velRatio, hesRatio);
@@ -56,14 +55,14 @@ export default function TelemetryHUD({
   sessionId,
   wsStatus,
   reconnectAttempt,
-  nextReconnectDelayMs,
+  nextReconnectDelayMs = 0,
   onReconnect,
   telemetrySnapshot,
   subscribeTrajectory,
   threshold = 70,
   onSimulateSpike,
   onResetTelemetry,
-  receivedComponentCount,
+  receivedComponentCount = 0,
   onOpenCodeDrawer
 }) {
   const [heatmapEnabled, setHeatmapEnabled] = useState(false);
@@ -76,15 +75,15 @@ export default function TelemetryHUD({
 
   const badge = STATUS_BADGE[wsStatus] || STATUS_BADGE[WS_STATUS.DISCONNECTED];
   const {
-    metrics,
+    metrics = {},
     cursor = { x: 0, y: 0 },
     instantScore = 0,
-    rollingAverageScore = 0,
+    rollingAverageScore = telemetrySnapshot?.cognitiveLoadScore ?? 0,
     activeFieldId,
     activeField,
     windowSampleCount = 0,
     lastSnapshotSentAt
-  } = telemetrySnapshot;
+  } = telemetrySnapshot || {};
 
   const currentField = activeFieldId || activeField || "";
   const isHighLoad = rollingAverageScore >= threshold;
@@ -153,7 +152,6 @@ export default function TelemetryHUD({
           ctx.lineWidth = curr.isErratic ? 4.5 : 2.5;
           ctx.stroke();
 
-          // Soft red radial glow for erratic spikes or hesitation zones
           if (curr.isErratic && i % 3 === 0) {
             const grad = ctx.createRadialGradient(
               curr.x,
@@ -224,16 +222,29 @@ export default function TelemetryHUD({
               AG
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-white">
-                AuraGen Telemetry & Sliding Window Engine
-              </h2>
+              <div className="flex items-center space-x-2">
+                <h2 className="text-sm font-semibold text-white">
+                  AuraGen Telemetry & Friction Engine
+                </h2>
+                {isHighLoad && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse">
+                    FRUSTRATION DETECTED
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-slate-400">
-                Session <span className="font-mono text-indigo-300">{sessionId}</span> • 5s rolling window + formStateSnapshot serialization
+                Session <span className="font-mono text-indigo-300">{sessionId}</span> • 5s sliding score window + 10s rolling events + formStateSnapshot
               </p>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {/* Active Field indicator badge */}
+            <div className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-slate-800 text-indigo-300 border border-slate-700 max-w-[180px] truncate">
+              <span className="text-slate-400 mr-1.5">Field:</span>
+              <span className="font-semibold truncate">{currentField || "—"}</span>
+            </div>
+
             <div
               className={`inline-flex items-center space-x-2 px-3 py-1 rounded-full text-xs font-semibold border ${badge.pill}`}
             >
@@ -339,40 +350,58 @@ export default function TelemetryHUD({
             </div>
           </div>
 
-          <div className="lg:col-span-5 grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+          {/* 5-Metric Breakdown: Velocity, Hesitation, Rage Clicks, Click Error, Direction */}
+          <div className="lg:col-span-5 grid grid-cols-3 sm:grid-cols-5 gap-2 text-center">
             <div className="bg-slate-800/70 rounded-xl p-2 border border-slate-800">
               <div className="text-[10px] uppercase tracking-wider text-slate-400">
                 Velocity
               </div>
               <div className="text-xs font-semibold text-white mt-0.5">
-                {metrics.mouseVelocity} px/s
+                {metrics.mouseVelocity ?? 0} <span className="text-[9px] text-slate-400">px/s</span>
               </div>
             </div>
+
             <div className="bg-slate-800/70 rounded-xl p-2 border border-slate-800">
               <div className="text-[10px] uppercase tracking-wider text-slate-400">
                 Hesitation
               </div>
               <div className="text-xs font-semibold text-white mt-0.5">
-                {(metrics.hesitationMs / 1000).toFixed(1)}s
+                {((metrics.hesitationMs ?? 0) / 1000).toFixed(1)}s
               </div>
             </div>
+
             <div className="bg-slate-800/70 rounded-xl p-2 border border-slate-800">
               <div className="text-[10px] uppercase tracking-wider text-slate-400">
                 Rage Clicks
               </div>
-              <div className="text-xs font-semibold text-white mt-0.5">
-                {metrics.rageClicks}
+              <div
+                className={`text-xs font-semibold mt-0.5 ${
+                  (metrics.rageClicks ?? 0) > 0 ? "text-rose-400" : "text-white"
+                }`}
+              >
+                {metrics.rageClicks ?? 0}
               </div>
             </div>
+
             <div className="bg-slate-800/70 rounded-xl p-2 border border-slate-800">
               <div className="text-[10px] uppercase tracking-wider text-slate-400">
-                Active Field
+                Click Error
               </div>
               <div
-                className="text-xs font-semibold text-indigo-300 mt-0.5 truncate"
-                title={currentField || "None"}
+                className={`text-xs font-semibold mt-0.5 ${
+                  (metrics.clickErrorRate ?? 0) > 0.3 ? "text-rose-400" : "text-white"
+                }`}
               >
-                {currentField || "—"}
+                {Math.round((metrics.clickErrorRate ?? 0) * 100)}%
+              </div>
+            </div>
+
+            <div className="bg-slate-800/70 rounded-xl p-2 border border-slate-800">
+              <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                Direction
+              </div>
+              <div className="text-xs font-semibold text-indigo-300 mt-0.5">
+                {metrics.directionChanges ?? 0}
               </div>
             </div>
           </div>
@@ -435,7 +464,7 @@ export default function TelemetryHUD({
             <div className="bg-slate-900 rounded-lg p-2 border border-slate-800/80">
               <div className="text-[10px] text-slate-400">CURSOR / VEL</div>
               <div className="font-semibold text-slate-200">
-                {cursor.x},{cursor.y} • {metrics.mouseVelocity}px/s
+                {cursor.x},{cursor.y} • {metrics.mouseVelocity ?? 0}px/s
               </div>
             </div>
           </div>

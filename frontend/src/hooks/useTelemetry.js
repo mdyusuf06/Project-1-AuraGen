@@ -8,38 +8,60 @@ function clamp(val, min, max) {
   return Math.max(min, Math.min(max, val));
 }
 
-/**
- * Computes instantaneous 0-100 Cognitive Load Score from behavioral telemetry metrics.
- */
-export function computeCognitiveLoadScore({
-  mouseVelocity,
-  hesitationMs,
-  rageClicks,
-  clickErrorRate
-}) {
-  const velocityScore = clamp((mouseVelocity / 1600) * 20, 0, 20);
-  const hesitationScore = clamp((hesitationMs / 10000) * 30, 0, 30);
-  const rageScore = clamp(rageClicks * 18, 0, 45);
-  const errorScore = clamp(clickErrorRate * 35, 0, 35);
+export const DEFAULT_WEIGHTS = {
+  velocity: 20,        // Max 20 pts (scaled by 1200 px/s)
+  hesitation: 25,      // Max 25 pts (scaled by 8000 ms)
+  rageClicks: 25,      // Max 25 pts (scaled by 3+ rage clicks in rolling window)
+  clickErrorRate: 15,  // Max 15 pts (scaled by 1.0 error rate in rolling window)
+  directionChanges: 15 // Max 15 pts (scaled by 12+ erratic changes in rolling window)
+};
 
-  return Math.round(
-    clamp(velocityScore + hesitationScore + rageScore + errorScore, 0, 100)
-  );
+/**
+ * Computes a weighted 0-100 instantaneous Cognitive Load Score from behavioral telemetry metrics.
+ */
+export function computeCognitiveLoadScore(metrics, customWeights = {}) {
+  const {
+    mouseVelocity = 0,
+    hesitationMs = 0,
+    rageClicks = 0,
+    clickErrorRate = 0,
+    directionChanges = 0
+  } = metrics || {};
+
+  const weights = { ...DEFAULT_WEIGHTS, ...customWeights };
+
+  const velocityScore = clamp((mouseVelocity / 1200) * weights.velocity, 0, weights.velocity);
+  const hesitationScore = clamp((hesitationMs / 8000) * weights.hesitation, 0, weights.hesitation);
+  const rageScore = clamp((rageClicks / 3) * weights.rageClicks, 0, weights.rageClicks);
+  const errorScore = clamp(clickErrorRate * weights.clickErrorRate, 0, weights.clickErrorRate);
+  const directionScore = clamp((directionChanges / 12) * weights.directionChanges, 0, weights.directionChanges);
+
+  const total = velocityScore + hesitationScore + rageScore + errorScore + directionScore;
+  return Math.round(clamp(total, 0, 100));
 }
 
 /**
- * Custom React hook tracking mouse velocity, field hesitation, rage clicks,
- * click-error rate, 5-second sliding window rolling average, mouse trajectory points,
- * and serialized formStateSnapshot on threshold breach.
+ * Custom React hook tracking user friction telemetry over a rolling 10-second event window
+ * and a 5-second sliding score window.
+ *
+ * Features:
+ * - Mouse velocity, erratic direction changes (> 45 deg), hesitation, rage clicks & click-error rate
+ * - 5s sliding window rolling average (`rollingAverageScore`) + `instantScore`
+ * - `formStateSnapshot` serialization (values + DOM context) when cognitive load threshold is breached
+ * - Zero-rerender trajectory subscription (`subscribeTrajectory`) for live HTML5 <canvas> heatmap
+ * - `onThreshold` callback invoked once per threshold breach episode
  */
 export function useTelemetry({
   sessionId,
-  activeField,
+  activeField = "",
   formContext = {},
   threshold = 70,
-  isConnected,
+  weights = DEFAULT_WEIGHTS,
+  streamIntervalMs = 1000,
+  windowDurationMs = 10000,
+  isConnected = false,
   sendTelemetry,
-  streamIntervalMs = 1000
+  onThreshold
 }) {
   const [telemetrySnapshot, setTelemetrySnapshot] = useState({
     metrics: {
@@ -47,7 +69,8 @@ export function useTelemetry({
       hesitationMs: 0,
       rageClicks: 0,
       clickErrorRate: 0,
-      clickErrorCount: 0
+      clickErrorCount: 0,
+      directionChanges: 0
     },
     cursor: { x: 0, y: 0 },
     instantScore: 0,
@@ -68,6 +91,9 @@ export function useTelemetry({
   const thresholdRef = useRef(threshold);
   thresholdRef.current = threshold;
 
+  const onThresholdRef = useRef(onThreshold);
+  onThresholdRef.current = onThreshold;
+
   const isConnectedRef = useRef(isConnected);
   isConnectedRef.current = isConnected;
 
@@ -77,22 +103,28 @@ export function useTelemetry({
   // Trajectory listeners for zero-rerender HTML5 <canvas> heatmap drawing
   const trajectoryListenersRef = useRef(new Set());
 
-  // Sliding window buffer holding { timestamp, score } over the last 5 seconds
+  // 5-second sliding window buffer holding { timestamp, score }
   const scoreWindowRef = useRef([]);
 
+  // Tracker state holding rolling 10s event buffers + cursor telemetry
   const trackerRef = useRef({
     lastMouseX: null,
     lastMouseY: null,
     lastMouseTime: null,
+    lastSampleX: null,
+    lastSampleY: null,
+    lastSampleTime: 0,
+    lastHeadingAngle: null,
     cursorX: 0,
     cursorY: 0,
     smoothedVelocity: 0,
     lastInteractionTime: Date.now(),
-    recentClicks: [],
-    rageClicks: 0,
-    totalClicks: 0,
-    errorClicks: 0,
+    velocitySamples: [],
+    directionEvents: [],
+    clickEvents: [],        // { time, x, y, isError }
+    rageClickIncidents: [], // { time }
     manualOverrideScore: null,
+    hasFiredThresholdForEpisode: false,
     lastSnapshotSentAt: null
   });
 
@@ -118,37 +150,76 @@ export function useTelemetry({
     };
   }, []);
 
-  const emitSnapshot = useCallback(
-    (overridePayload = null) => {
+  // Prune events outside the rolling event window (default 10s)
+  const pruneOldEvents = useCallback(
+    (now) => {
       const t = trackerRef.current;
-      const now = Date.now();
+      const cutoff = now - windowDurationMs;
+
+      t.velocitySamples = t.velocitySamples.filter((s) => s.time >= cutoff);
+      t.directionEvents = t.directionEvents.filter((d) => d.time >= cutoff);
+      t.clickEvents = t.clickEvents.filter((c) => c.time >= cutoff);
+      t.rageClickIncidents = t.rageClickIncidents.filter((r) => r.time >= cutoff);
+    },
+    [windowDurationMs]
+  );
+
+  // Compute metrics snapshot over the rolling window
+  const computeCurrentMetrics = useCallback(
+    (now) => {
+      const t = trackerRef.current;
+      pruneOldEvents(now);
+
       const hesitationMs = activeFieldRef.current
         ? Math.max(0, now - t.lastInteractionTime)
         : 0;
 
+      const totalClicks = t.clickEvents.length;
+      const errorClicks = t.clickEvents.filter((c) => c.isError).length;
       const clickErrorRate =
-        t.totalClicks > 0
-          ? Number((t.errorClicks / t.totalClicks).toFixed(2))
-          : 0;
+        totalClicks > 0 ? Number((errorClicks / totalClicks).toFixed(2)) : 0;
 
-      const metrics = overridePayload?.metrics || {
-        mouseVelocity: Math.round(t.smoothedVelocity),
+      const rageClicks = t.rageClickIncidents.length;
+      const directionChanges = t.directionEvents.length;
+
+      const mouseVelocity =
+        t.velocitySamples.length > 0
+          ? Math.round(
+              t.velocitySamples.reduce((sum, v) => sum + v.velocity, 0) /
+                t.velocitySamples.length
+            )
+          : Math.round(t.smoothedVelocity);
+
+      return {
+        mouseVelocity,
         hesitationMs: Math.round(hesitationMs),
-        rageClicks: t.rageClicks,
+        rageClicks,
         clickErrorRate,
-        clickErrorCount: t.errorClicks
+        clickErrorCount: errorClicks,
+        directionChanges
       };
+    },
+    [pruneOldEvents]
+  );
 
+  // Emits snapshot to state, invokes onThreshold on breach, and streams via WebSocket
+  const emitSnapshot = useCallback(
+    (overridePayload = null) => {
+      const now = Date.now();
+      const t = trackerRef.current;
+
+      const metrics = overridePayload?.metrics || computeCurrentMetrics(now);
       const instantScore =
         overridePayload?.instantScore ??
+        overridePayload?.cognitiveLoadScore ??
         (t.manualOverrideScore !== null
           ? t.manualOverrideScore
-          : computeCognitiveLoadScore(metrics));
+          : computeCognitiveLoadScore(metrics, weights));
 
-      // Sliding Window: keep only samples within the last 5,000 ms
-      const cutoff = now - SLIDING_WINDOW_MS;
+      // 5-second Sliding Window calculation for smoothed rollingAverageScore
+      const scoreCutoff = now - SLIDING_WINDOW_MS;
       scoreWindowRef.current = scoreWindowRef.current.filter(
-        (entry) => entry.timestamp >= cutoff
+        (entry) => entry.timestamp >= scoreCutoff
       );
 
       if (overridePayload?.fillWindowWithScore !== undefined) {
@@ -212,28 +283,39 @@ export function useTelemetry({
         sendTelemetryRef.current(payload);
       }
 
+      // Trigger onThreshold callback once per breach episode
+      if (isThresholdBreached) {
+        if (!t.hasFiredThresholdForEpisode) {
+          t.hasFiredThresholdForEpisode = true;
+          onThresholdRef.current?.(payload);
+        }
+      } else {
+        t.hasFiredThresholdForEpisode = false;
+      }
+
       return payload;
     },
-    [sessionId, buildFormStateSnapshot]
+    [sessionId, weights, computeCurrentMetrics, buildFormStateSnapshot]
   );
 
-  // Attach DOM telemetry listeners
+  // Setup DOM event listeners (smooth trajectory heatmap + 100ms sampling for direction/velocity)
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     const handleMouseMove = (e) => {
       const t = trackerRef.current;
       const nowPerf = performance.now();
-      const nowEpoch = Date.now();
-      let instantVelocity = 0;
+      const wallNow = Date.now();
+      let liveInstantVelocity = 0;
 
+      // High-frequency velocity update for smooth canvas trajectory heatmap
       if (t.lastMouseX !== null && t.lastMouseTime !== null) {
         const dt = (nowPerf - t.lastMouseTime) / 1000;
         if (dt > 0.008) {
           const dx = e.clientX - t.lastMouseX;
           const dy = e.clientY - t.lastMouseY;
-          instantVelocity = Math.hypot(dx, dy) / dt;
-          t.smoothedVelocity = t.smoothedVelocity * 0.65 + instantVelocity * 0.35;
+          liveInstantVelocity = Math.hypot(dx, dy) / dt;
+          t.smoothedVelocity = t.smoothedVelocity * 0.65 + liveInstantVelocity * 0.35;
         }
       }
 
@@ -244,19 +326,19 @@ export function useTelemetry({
       t.lastMouseTime = nowPerf;
 
       const currentHesitationMs = activeFieldRef.current
-        ? Math.max(0, nowEpoch - t.lastInteractionTime)
+        ? Math.max(0, wallNow - t.lastInteractionTime)
         : 0;
 
-      // Publish live point to subscribed heatmap canvas overlays
+      // Publish live point to subscribed HTML5 <canvas> heatmap overlays
       if (trajectoryListenersRef.current.size > 0) {
         const point = {
           x: e.clientX,
           y: e.clientY,
           velocity: Math.round(t.smoothedVelocity),
-          instantVelocity: Math.round(instantVelocity),
+          instantVelocity: Math.round(liveInstantVelocity),
           hesitationMs: currentHesitationMs,
           isErratic: t.smoothedVelocity >= 750 || currentHesitationMs >= 4500,
-          time: nowEpoch
+          time: wallNow
         };
         for (const listener of trajectoryListenersRef.current) {
           try {
@@ -266,6 +348,44 @@ export function useTelemetry({
           }
         }
       }
+
+      // 100ms sampling for rolling window velocity & erratic direction changes
+      if (t.lastSampleTime === 0) {
+        t.lastSampleTime = nowPerf;
+        t.lastSampleX = e.clientX;
+        t.lastSampleY = e.clientY;
+        return;
+      }
+
+      const elapsed = nowPerf - t.lastSampleTime;
+      if (elapsed < 100) return;
+
+      const dx = e.clientX - t.lastSampleX;
+      const dy = e.clientY - t.lastSampleY;
+      const dtSeconds = elapsed / 1000;
+      const distance = Math.hypot(dx, dy);
+      const sampledVelocity = distance / dtSeconds;
+
+      t.velocitySamples.push({ time: wallNow, velocity: sampledVelocity });
+
+      if (distance > 8) {
+        const headingAngle = Math.atan2(dy, dx);
+        if (t.lastHeadingAngle !== null) {
+          let angleDiff = Math.abs(headingAngle - t.lastHeadingAngle);
+          if (angleDiff > Math.PI) {
+            angleDiff = 2 * Math.PI - angleDiff;
+          }
+          // Deflection > 45 degrees signifies erratic direction change
+          if (angleDiff > Math.PI / 4) {
+            t.directionEvents.push({ time: wallNow });
+          }
+        }
+        t.lastHeadingAngle = headingAngle;
+      }
+
+      t.lastSampleX = e.clientX;
+      t.lastSampleY = e.clientY;
+      t.lastSampleTime = nowPerf;
     };
 
     const handleKeyDown = () => {
@@ -275,9 +395,8 @@ export function useTelemetry({
 
     const handleClick = (e) => {
       const t = trackerRef.current;
-      const now = Date.now();
-      t.totalClicks += 1;
-      t.lastInteractionTime = now;
+      const wallNow = Date.now();
+      t.lastInteractionTime = wallNow;
       t.manualOverrideScore = null;
 
       const tag = e.target?.tagName?.toLowerCase() || "";
@@ -292,23 +411,21 @@ export function useTelemetry({
       ].includes(tag);
       const isInvalidControl =
         e.target?.getAttribute?.("aria-invalid") === "true";
+      const isError = !isInteractive || isInvalidControl;
 
-      if (!isInteractive || isInvalidControl) {
-        t.errorClicks += 1;
-      }
+      t.clickEvents.push({ time: wallNow, x: e.clientX, y: e.clientY, isError });
 
-      // Detect rage clicks: >= 3 clicks within 900ms in a 35px radius
-      t.recentClicks = t.recentClicks.filter((c) => now - c.time <= 900);
-      const nearClicks = t.recentClicks.filter(
-        (c) => Math.hypot(c.x - e.clientX, c.y - e.clientY) <= 35
+      // Rage click detection: >= 3 clicks within 1000ms in a 35px radius
+      const recentClicksInArea = t.clickEvents.filter(
+        (c) =>
+          wallNow - c.time <= 1000 &&
+          Math.hypot(c.x - e.clientX, c.y - e.clientY) <= 35
       );
 
-      if (nearClicks.length >= 2) {
-        t.rageClicks += 1;
+      if (recentClicksInArea.length >= 3) {
+        t.rageClickIncidents.push({ time: wallNow });
         emitSnapshot();
       }
-
-      t.recentClicks.push({ x: e.clientX, y: e.clientY, time: now });
     };
 
     window.addEventListener("mousemove", handleMouseMove, { passive: true });
@@ -328,7 +445,7 @@ export function useTelemetry({
     };
   }, [emitSnapshot, streamIntervalMs]);
 
-  // Reset hesitation timer whenever user switches active field
+  // Reset hesitation timer when field focus switches
   useEffect(() => {
     trackerRef.current.lastInteractionTime = Date.now();
   }, [activeField]);
@@ -348,9 +465,9 @@ export function useTelemetry({
         hesitationMs: 11500,
         rageClicks: 5,
         clickErrorRate: 0.42,
-        clickErrorCount: 5
+        clickErrorCount: 5,
+        directionChanges: 14
       };
-      trackerRef.current.rageClicks = simulatedMetrics.rageClicks;
       trackerRef.current.smoothedVelocity = simulatedMetrics.mouseVelocity;
       trackerRef.current.manualOverrideScore = score;
 
@@ -370,17 +487,23 @@ export function useTelemetry({
       lastMouseX: null,
       lastMouseY: null,
       lastMouseTime: null,
+      lastSampleX: null,
+      lastSampleY: null,
+      lastSampleTime: 0,
+      lastHeadingAngle: null,
       cursorX: trackerRef.current.cursorX,
       cursorY: trackerRef.current.cursorY,
       smoothedVelocity: 0,
       lastInteractionTime: Date.now(),
-      recentClicks: [],
-      rageClicks: 0,
-      totalClicks: 0,
-      errorClicks: 0,
+      velocitySamples: [],
+      directionEvents: [],
+      clickEvents: [],
+      rageClickIncidents: [],
       manualOverrideScore: null,
+      hasFiredThresholdForEpisode: false,
       lastSnapshotSentAt: null
     };
+
     emitSnapshot({
       activeField: activeFieldRef.current,
       metrics: {
@@ -388,14 +511,22 @@ export function useTelemetry({
         hesitationMs: 0,
         rageClicks: 0,
         clickErrorRate: 0,
-        clickErrorCount: 0
+        clickErrorCount: 0,
+        directionChanges: 0
       },
       instantScore: 0,
       fillWindowWithScore: 0
     });
   }, [emitSnapshot]);
 
+  const score = telemetrySnapshot.cognitiveLoadScore;
+  const isFrustrated = score >= threshold;
+
   return {
+    metrics: telemetrySnapshot.metrics,
+    score,
+    activeField: telemetrySnapshot.activeField,
+    isFrustrated,
     telemetrySnapshot,
     subscribeTrajectory,
     triggerSimulatedFriction,

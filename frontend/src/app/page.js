@@ -41,8 +41,14 @@ export default function AuraGenDemoPage() {
     activeField,
     formContext,
     threshold: serverThreshold,
+    streamIntervalMs: 1000,
     isConnected,
-    sendTelemetry
+    sendTelemetry,
+    onThreshold: (snapshot) => {
+      console.log(
+        `[Telemetry] 🚨 Cognitive Load Threshold Exceeded (${snapshot.cognitiveLoadScore} >= ${serverThreshold}) at "${snapshot.activeField}". Telemetry snapshot streamed.`
+      );
+    }
   });
 
   // Listen for WebSocket replies ({ type: "component", code }, "connected", "error")
