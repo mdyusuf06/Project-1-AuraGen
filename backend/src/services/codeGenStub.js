@@ -56,7 +56,7 @@ export default function DynamicFormWizard({ initialValues = ${serializedInitial}
       </div>
 
       <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-sm text-indigo-900">
-        <strong>Focused Help for "{safeField}":</strong> We simplified the complex form into quick steps.
+        <strong>Focused Help for "${safeField}":</strong> We simplified the complex form into quick steps.
         Your previously entered values are preserved.
       </div>
 

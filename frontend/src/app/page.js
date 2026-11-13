@@ -6,6 +6,7 @@ import { useTelemetry } from "../hooks/useTelemetry";
 import TelemetryHUD from "../components/TelemetryHUD";
 import FinancialForm from "../components/FinancialForm";
 import GeneratedCodeDrawer from "../components/GeneratedCodeDrawer";
+import DynamicUIRenderer from "../components/DynamicUIRenderer";
 
 const THRESHOLD = Number(process.env.NEXT_PUBLIC_COGNITIVE_LOAD_THRESHOLD || 70);
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080";
@@ -16,6 +17,7 @@ export default function AuraGenDemoPage() {
   const [receivedComponents, setReceivedComponents] = useState([]);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [serverThreshold, setServerThreshold] = useState(THRESHOLD);
+  const [isDynamicMode, setIsDynamicMode] = useState(false);
 
   const sessionId = useMemo(() => {
     return `sess_${Math.random().toString(36).slice(2, 10)}`;
@@ -68,7 +70,7 @@ export default function AuraGenDemoPage() {
           },
           ...prev
         ]);
-        setIsDrawerOpen(true);
+        setIsDynamicMode(true);
       }
     });
 
@@ -98,7 +100,7 @@ export default function AuraGenDemoPage() {
         <div className="mb-6 bg-indigo-50 border border-indigo-200 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
           <div className="text-sm text-indigo-950">
             <strong className="font-semibold">
-              AuraGen Self-Healing Payload Received!
+              AuraGen Self-Healing Payload Active!
             </strong>{" "}
             <span className="text-indigo-800">
               Backend returned{" "}
@@ -112,21 +114,45 @@ export default function AuraGenDemoPage() {
               .
             </span>
           </div>
-          <button
-            type="button"
-            onClick={() => setIsDrawerOpen(true)}
-            className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold text-white transition-colors"
-          >
-            Inspect Received Code
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsDynamicMode((prev) => !prev)}
+              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold text-white transition-colors"
+            >
+              {isDynamicMode ? "View Standard 21-Field Form" : "Switch to Dynamic Wizard"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsDrawerOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 transition-colors"
+            >
+              Inspect Code
+            </button>
+          </div>
         </div>
       )}
 
-      <FinancialForm
-        activeField={activeField}
-        onActiveFieldChange={setActiveField}
-        onFormContextChange={setFormContext}
-      />
+      {isDynamicMode && latestComponent ? (
+        <DynamicUIRenderer
+          code={latestComponent.code}
+          initialValues={formContext}
+          onSubmit={(data) => {
+            console.log("[AuraGen] Dynamic Form Submitted successfully:", data);
+            setFormContext((prev) => ({ ...prev, ...data }));
+            alert("Application submitted successfully via AuraGen Generative Wizard!");
+            setIsDynamicMode(false);
+          }}
+          onCancel={() => setIsDynamicMode(false)}
+          onViewCode={() => setIsDrawerOpen(true)}
+        />
+      ) : (
+        <FinancialForm
+          activeField={activeField}
+          onActiveFieldChange={setActiveField}
+          onFormContextChange={setFormContext}
+        />
+      )}
 
       <GeneratedCodeDrawer
         isOpen={isDrawerOpen}
