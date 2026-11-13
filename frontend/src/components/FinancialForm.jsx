@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   FINANCIAL_FORM_SECTIONS,
   ALL_FORM_FIELDS,
@@ -12,13 +12,17 @@ import {
 export default function FinancialForm({
   activeField,
   onActiveFieldChange,
-  onFormValuesChange
+  onFormContextChange
 }) {
   const [values, setValues] = useState(() => createInitialFormValues());
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState({});
   const [submittedData, setSubmittedData] = useState(null);
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [focusedFieldId, setFocusedFieldId] = useState(null);
+  const [hoveredFieldId, setHoveredFieldId] = useState(null);
+
+  const hoverThrottleRef = useRef(0);
 
   const completedCount = useMemo(() => {
     return ALL_FORM_FIELDS.filter((f) => {
@@ -29,15 +33,65 @@ export default function FinancialForm({
 
   const errorCount = Object.keys(errors).length;
 
+  const activeFieldMeta = useMemo(() => {
+    const field = ALL_FORM_FIELDS.find((f) => f.name === activeField);
+    return field
+      ? {
+          activeFieldId: field.name,
+          activeFieldLabel: field.label,
+          activeSectionId: field.section
+        }
+      : {
+          activeFieldId: activeField || "",
+          activeFieldLabel: activeField || "",
+          activeSectionId: ""
+        };
+  }, [activeField]);
+
+  // Keep parent telemetry hook synchronized with latest form values & DOM context
+  useEffect(() => {
+    onFormContextChange?.({
+      values,
+      errors,
+      totalFieldsCount: ALL_FORM_FIELDS.length,
+      completedFieldsCount: completedCount,
+      hoveredFieldId,
+      focusedFieldId,
+      ...activeFieldMeta
+    });
+  }, [
+    values,
+    errors,
+    completedCount,
+    hoveredFieldId,
+    focusedFieldId,
+    activeFieldMeta,
+    onFormContextChange
+  ]);
+
   const handleFieldFocus = (fieldName) => {
+    setFocusedFieldId(fieldName);
     onActiveFieldChange?.(fieldName);
+  };
+
+  const handleFieldMouseMove = (fieldName) => {
+    const now = Date.now();
+    if (now - hoverThrottleRef.current < 250) return;
+    hoverThrottleRef.current = now;
+
+    if (hoveredFieldId !== fieldName) {
+      setHoveredFieldId(fieldName);
+    }
+    // If user is not actively typing in another field, attribute friction to the hovered field
+    if (!focusedFieldId && activeField !== fieldName) {
+      onActiveFieldChange?.(fieldName);
+    }
   };
 
   const handleFieldChange = (e) => {
     const { name, value } = e.target;
     const nextValues = { ...values, [name]: value };
     setValues(nextValues);
-    onFormValuesChange?.(nextValues);
 
     if (touched[name] || submitAttempted) {
       const err = validateField(name, value, nextValues);
@@ -55,7 +109,9 @@ export default function FinancialForm({
 
   const handleFieldBlur = (e) => {
     const { name, value } = e.target;
+    setFocusedFieldId((prev) => (prev === name ? null : prev));
     setTouched((prev) => ({ ...prev, [name]: true }));
+
     const err = validateField(name, value, values);
     setErrors((prev) => {
       const next = { ...prev };
@@ -108,7 +164,6 @@ export default function FinancialForm({
     };
     setValues(sample);
     setErrors({});
-    onFormValuesChange?.(sample);
   };
 
   const handleReset = () => {
@@ -118,7 +173,6 @@ export default function FinancialForm({
     setTouched({});
     setSubmitAttempted(false);
     setSubmittedData(null);
-    onFormValuesChange?.(empty);
   };
 
   return (
@@ -133,7 +187,7 @@ export default function FinancialForm({
             Commercial Credit & Wealth Disclosure
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            Complete all {ALL_FORM_FIELDS.length} fields across {FINANCIAL_FORM_SECTIONS.length} sections. Rapid clicks or hesitation will trigger AuraGen telemetry.
+            Complete all {ALL_FORM_FIELDS.length} fields across {FINANCIAL_FORM_SECTIONS.length} sections. Typed values are serialized into <code className="font-mono text-xs bg-slate-200/70 px-1 rounded">formStateSnapshot</code> upon friction threshold breach.
           </p>
         </div>
 
@@ -211,7 +265,11 @@ export default function FinancialForm({
                   }`;
 
                   return (
-                    <div key={field.name} className="space-y-1">
+                    <div
+                      key={field.name}
+                      onMouseMove={() => handleFieldMouseMove(field.name)}
+                      className="space-y-1 p-1.5 -m-1.5 rounded-xl transition-colors hover:bg-indigo-50/30"
+                    >
                       <label
                         htmlFor={field.name}
                         className="flex items-center justify-between text-xs font-semibold text-slate-700"
@@ -222,7 +280,7 @@ export default function FinancialForm({
                         </span>
                         {isFocused && (
                           <span className="text-[10px] font-medium text-indigo-600">
-                            Tracking focus
+                            Active context
                           </span>
                         )}
                       </label>
@@ -298,4 +356,3 @@ export default function FinancialForm({
     </div>
   );
 }
-

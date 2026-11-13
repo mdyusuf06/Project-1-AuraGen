@@ -1,11 +1,18 @@
 /**
  * AuraGen Client WebSocket Service
  * Features:
+ *  - Explicit connection state machine (CONNECTING, CONNECTED, RECONNECTING, DISCONNECTED)
  *  - Auto-reconnect with exponential backoff + jitter
- *  - Explicit connection status tracking ("connecting" | "connected" | "reconnecting" | "disconnected")
- *  - Shared JSON telemetry sender (`sendTelemetry`)
+ *  - Telemetry serialization supporting Sliding Window scores, directionChanges, clickErrorCount & formStateSnapshot
  *  - Pub/sub message subscription (`onMessage`)
  */
+
+export const WS_STATUS = Object.freeze({
+  CONNECTING: "CONNECTING",
+  CONNECTED: "CONNECTED",
+  RECONNECTING: "RECONNECTING",
+  DISCONNECTED: "DISCONNECTED"
+});
 
 export function createAuraGenWsService(url, options = {}) {
   const {
@@ -15,8 +22,9 @@ export function createAuraGenWsService(url, options = {}) {
   } = options;
 
   let socket = null;
-  let status = "disconnected";
+  let status = WS_STATUS.DISCONNECTED;
   let reconnectAttempt = 0;
+  let nextReconnectDelayMs = 0;
   let reconnectTimer = null;
   let intentionallyClosed = false;
 
@@ -27,7 +35,7 @@ export function createAuraGenWsService(url, options = {}) {
     status = nextStatus;
     for (const listener of statusListeners) {
       try {
-        listener({ status, reconnectAttempt });
+        listener({ status, reconnectAttempt, nextReconnectDelayMs });
       } catch (err) {
         console.error("[AuraGen WS] Status listener error:", err);
       }
@@ -43,24 +51,26 @@ export function createAuraGenWsService(url, options = {}) {
 
   function scheduleReconnect() {
     if (intentionallyClosed || reconnectAttempt >= maxReconnectAttempts) {
-      setStatus("disconnected");
+      nextReconnectDelayMs = 0;
+      setStatus(WS_STATUS.DISCONNECTED);
       return;
     }
 
     reconnectAttempt += 1;
-    setStatus("reconnecting");
 
     const exponentialDelay = Math.min(
       maxReconnectDelayMs,
       baseReconnectDelayMs * Math.pow(2, reconnectAttempt - 1)
     );
     const jitter = Math.floor(Math.random() * 300);
-    const delay = exponentialDelay + jitter;
+    nextReconnectDelayMs = exponentialDelay + jitter;
+
+    setStatus(WS_STATUS.RECONNECTING);
 
     clearReconnectTimer();
     reconnectTimer = setTimeout(() => {
       connect();
-    }, delay);
+    }, nextReconnectDelayMs);
   }
 
   function connect() {
@@ -71,17 +81,17 @@ export function createAuraGenWsService(url, options = {}) {
 
     intentionallyClosed = false;
     clearReconnectTimer();
-    setStatus(reconnectAttempt > 0 ? "reconnecting" : "connecting");
+    setStatus(reconnectAttempt > 0 ? WS_STATUS.RECONNECTING : WS_STATUS.CONNECTING);
 
     try {
       const ws = new WebSocket(url);
       socket = ws;
 
       ws.onopen = () => {
-        // Ignore stale socket events if replaced
         if (socket !== ws) return;
         reconnectAttempt = 0;
-        setStatus("connected");
+        nextReconnectDelayMs = 0;
+        setStatus(WS_STATUS.CONNECTED);
       };
 
       ws.onmessage = (event) => {
@@ -108,7 +118,7 @@ export function createAuraGenWsService(url, options = {}) {
         if (socket !== ws) return;
         socket = null;
         if (intentionallyClosed) {
-          setStatus("disconnected");
+          setStatus(WS_STATUS.DISCONNECTED);
         } else {
           scheduleReconnect();
         }
@@ -134,24 +144,30 @@ export function createAuraGenWsService(url, options = {}) {
       if (current.readyState === WebSocket.OPEN) {
         current.close(1000, "Client disconnect");
       } else if (current.readyState === WebSocket.CONNECTING) {
-        // Close once open to avoid browser "WebSocket closed before connection established" warning
         current.onopen = () => current.close(1000, "Client cleanup");
       }
     }
 
     reconnectAttempt = 0;
-    setStatus("disconnected");
+    nextReconnectDelayMs = 0;
+    setStatus(WS_STATUS.DISCONNECTED);
   }
 
   /**
    * Sends a telemetry payload formatted according to the shared AuraGen protocol.
-   * @param {object} telemetry
-   * @returns {boolean} True if transmitted over open socket, false otherwise
    */
   function sendTelemetry(telemetry) {
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       return false;
     }
+
+    const activeField = String(telemetry.activeFieldId ?? telemetry.activeField ?? "");
+    const rollingScore = Number(
+      telemetry.rollingAverageScore ?? telemetry.cognitiveLoadScore ?? 0
+    );
+    const instantScore = Number(
+      telemetry.instantScore ?? telemetry.cognitiveLoadScore ?? 0
+    );
 
     const normalizedPayload = {
       type: "telemetry",
@@ -161,16 +177,32 @@ export function createAuraGenWsService(url, options = {}) {
         mouseVelocity: Number(telemetry.metrics?.mouseVelocity ?? 0),
         hesitationMs: Number(telemetry.metrics?.hesitationMs ?? 0),
         rageClicks: Number(telemetry.metrics?.rageClicks ?? 0),
-        clickErrorRate: Number(telemetry.metrics?.clickErrorRate ?? 0)
+        clickErrorRate: Number(telemetry.metrics?.clickErrorRate ?? 0),
+        clickErrorCount: Number(telemetry.metrics?.clickErrorCount ?? 0),
+        directionChanges: Number(telemetry.metrics?.directionChanges ?? 0)
       },
-      cognitiveLoadScore: Number(telemetry.cognitiveLoadScore ?? 0),
-      activeField: String(telemetry.activeField ?? "")
+      cognitiveLoadScore: rollingScore,
+      instantScore,
+      rollingAverageScore: rollingScore,
+      activeField,
+      activeFieldId: activeField
     };
 
-    // Pass optional context if provided (ready for Week 3 state preservation)
+    if (telemetry.cursor) {
+      normalizedPayload.cursor = {
+        x: Math.max(0, Math.round(Number(telemetry.cursor.x ?? 0))),
+        y: Math.max(0, Math.round(Number(telemetry.cursor.y ?? 0)))
+      };
+    }
+
+    if (telemetry.formStateSnapshot) {
+      normalizedPayload.formStateSnapshot = telemetry.formStateSnapshot;
+    }
+
     if (telemetry.userInput) {
       normalizedPayload.userInput = telemetry.userInput;
     }
+
     if (telemetry.formFields) {
       normalizedPayload.formFields = telemetry.formFields;
     }
@@ -179,15 +211,8 @@ export function createAuraGenWsService(url, options = {}) {
     return true;
   }
 
-  /**
-   * Subscribes to incoming parsed JSON messages from the WebSocket server.
-   * @param {function} callback
-   * @returns {function} Unsubscribe function
-   */
   function onMessage(callback) {
-    if (typeof callback !== "function") {
-      return () => {};
-    }
+    if (typeof callback !== "function") return () => {};
     messageListeners.add(callback);
     return () => {
       messageListeners.delete(callback);
@@ -195,12 +220,9 @@ export function createAuraGenWsService(url, options = {}) {
   }
 
   function onStatusChange(callback) {
-    if (typeof callback !== "function") {
-      return () => {};
-    }
+    if (typeof callback !== "function") return () => {};
     statusListeners.add(callback);
-    // Emit current status immediately upon subscribe
-    callback({ status, reconnectAttempt });
+    callback({ status, reconnectAttempt, nextReconnectDelayMs });
     return () => {
       statusListeners.delete(callback);
     };
@@ -219,4 +241,3 @@ export function createAuraGenWsService(url, options = {}) {
     onStatusChange
   };
 }
-

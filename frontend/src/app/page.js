@@ -12,6 +12,7 @@ const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080";
 
 export default function AuraGenDemoPage() {
   const [activeField, setActiveField] = useState("annualIncome");
+  const [formContext, setFormContext] = useState({});
   const [receivedComponents, setReceivedComponents] = useState([]);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [serverThreshold, setServerThreshold] = useState(THRESHOLD);
@@ -24,6 +25,7 @@ export default function AuraGenDemoPage() {
     status: wsStatus,
     isConnected,
     reconnectAttempt,
+    nextReconnectDelayMs,
     sendTelemetry,
     onMessage,
     reconnect
@@ -31,13 +33,22 @@ export default function AuraGenDemoPage() {
 
   const {
     telemetrySnapshot,
+    subscribeTrajectory,
     triggerSimulatedFriction,
     resetTelemetry
   } = useTelemetry({
     sessionId,
     activeField,
+    formContext,
+    threshold: serverThreshold,
+    streamIntervalMs: 1000,
     isConnected,
-    sendTelemetry
+    sendTelemetry,
+    onThreshold: (snapshot) => {
+      console.log(
+        `[Telemetry] 🚨 Cognitive Load Threshold Exceeded (${snapshot.cognitiveLoadScore} >= ${serverThreshold}) at "${snapshot.activeField}". Telemetry snapshot streamed.`
+      );
+    }
   });
 
   // Listen for WebSocket replies ({ type: "component", code }, "connected", "error")
@@ -69,10 +80,13 @@ export default function AuraGenDemoPage() {
   return (
     <main className="min-h-screen py-8 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto">
       <TelemetryHUD
+        sessionId={sessionId}
         wsStatus={wsStatus}
         reconnectAttempt={reconnectAttempt}
+        nextReconnectDelayMs={nextReconnectDelayMs}
         onReconnect={reconnect}
         telemetrySnapshot={telemetrySnapshot}
+        subscribeTrajectory={subscribeTrajectory}
         threshold={serverThreshold}
         onSimulateSpike={() => triggerSimulatedFriction(activeField || "annualIncome", 88)}
         onResetTelemetry={resetTelemetry}
@@ -87,7 +101,15 @@ export default function AuraGenDemoPage() {
               AuraGen Self-Healing Payload Received!
             </strong>{" "}
             <span className="text-indigo-800">
-              Backend returned <code className="font-mono text-xs bg-indigo-100 px-1.5 py-0.5 rounded">{`{ type: "component", code }`}</code> ({latestComponent.code.length} chars). Week 2 will dynamically compile and swap this into the DOM.
+              Backend returned{" "}
+              <code className="font-mono text-xs bg-indigo-100 px-1.5 py-0.5 rounded">
+                {`{ type: "component", code }`}
+              </code>{" "}
+              ({latestComponent.code.length} chars) with preserved{" "}
+              <code className="font-mono text-xs bg-indigo-100 px-1.5 py-0.5 rounded">
+                formStateSnapshot
+              </code>
+              .
             </span>
           </div>
           <button
@@ -103,6 +125,7 @@ export default function AuraGenDemoPage() {
       <FinancialForm
         activeField={activeField}
         onActiveFieldChange={setActiveField}
+        onFormContextChange={setFormContext}
       />
 
       <GeneratedCodeDrawer
@@ -113,4 +136,3 @@ export default function AuraGenDemoPage() {
     </main>
   );
 }
-

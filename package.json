@@ -12,6 +12,7 @@
     "test": "node --test test/**/*.test.js",
     "test:codegen": "node tests/test-codegen.js",
     "test:backend": "npm --prefix backend test",
+    "test:frontend": "npm --prefix frontend test",
     "build:frontend": "npm --prefix frontend run build"
   },
   "author": "Infotact Solutions",
