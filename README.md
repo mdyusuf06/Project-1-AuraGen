@@ -1,233 +1,176 @@
-<<<<<<< HEAD
-# AuraGen: Self-Healing Generative UI via Cognitive Load
-### Week 1: LangChain.js Code-Generation Pipeline
+# AuraGen – Self-Healing Generative UI via Cognitive Load
 
-> **Infotact Solutions – Advanced Generative AI Engineering**  
-> *Self-Healing UI via Real-Time Cognitive Load Telemetry & On-the-Fly React Code Generation*
+> **Infotact Solutions – Advanced Generative AI Engineering (Week 1 Full-Stack Monorepo)**  
+> Real-time behavioral telemetry streaming over WebSockets + Complex Financial Form Demo + Stubbed Code-Gen Integration.
 
 ---
 
-## 🌟 Executive Summary
+## 🌟 Overview
 
-Standard web forms and dashboards are static and rigid. When a user is confused by a complex multi-section form, they are typically forced to read dense tooltips, contact customer support, or abandon the task entirely. Existing GenAI solutions are disconnected from the application (e.g., side chatbots), forcing users to pause their active workflow.
+Standard enterprise forms are rigid. When a user struggles on a complex financial disclosure form, AuraGen tracks behavioral friction signals (mouse velocity, hesitation time, rage clicks, click-error rate) to calculate a real-time **Cognitive Load Score (0–100)**. When the score crosses the configured threshold (`>= 70`), the Node.js WebSocket server invokes `generateComponent()` and pushes a custom, simplified React wizard component (`{ type: "component", code }`) back to the browser.
 
-**AuraGen** redefines human-computer interaction by making the user interface **self-healing**:
-1. The frontend continuously tracks cursor velocity, hesitation times, and rage-clicks to compute a real-time **Cognitive Load Score (0–100)**.
-2. When high cognitive friction is detected (e.g., score > 75 on a specific field like \`annualIncome\`), the backend LLM triggers.
-3. The **LangChain.js Code-Gen Pipeline** analyzes the exact friction point, original form schema, and user-entered values.
-4. It synthesizes an intuitive, multi-step, conversational React wizard styled strictly to the **Infotact Design System** (Tailwind CSS), preserving every character previously entered.
-5. In subsequent weeks, this code is validated by a Babel AST security layer and injected dynamically into the client DOM via WebSockets with zero page reload.
+### Week 1–2/3 Bridge Architecture
+- **Backend (`/backend`)**:
+  - **Zod Payload Validation (`src/validators/telemetryValidator.js`)**: Strict `zod` schema validating telemetry packets (`cursor`, `metrics`, `instantScore`, `rollingAverageScore`, `activeFieldId`, `formStateSnapshot`).
+  - **In-Memory LRU Session Store (`src/store/sessionStore.js`)**: Aggregates per-`sessionId` telemetry over time, tracks per-field friction hotspots, and exposes `GET /api/sessions/:sessionId/metrics` (plus `GET /api/sessions`).
+  - **Code-Gen Trigger (`src/server.js`)**: Evaluates `rollingAverageScore >= threshold`, passes preserved `formStateSnapshot.values` and `domContext` into `generateComponent()`, and returns `{ type: "component", code }`.
+- **Frontend (`/frontend`)**:
+  - **WebSocket State Machine (`src/hooks/useWebSocket.js` & `src/services/wsService.js`)**: Explicit states (`CONNECTING`, `CONNECTED`, `RECONNECTING`, `DISCONNECTED`), exponential backoff with jitter, `sendTelemetry`, and `onMessage`.
+  - **5-Second Sliding Window Telemetry & State Serialization (`src/hooks/useTelemetry.js`)**: Tracks velocity, hesitation, rage clicks, click errors, computes both `instantScore` and 5s `rollingAverageScore` to prevent false positives, and serializes `formStateSnapshot` (typed values + DOM context) when threshold is breached.
+  - **Field-Level Financial Form (`src/components/FinancialForm.jsx`)**: 21-field, 5-section financial disclosure form (`Personal`, `Employment`, `Income`, `Assets`, `Liabilities`) with `onFocus`, `onBlur`, and `onMouseMove` tracking.
+  - **Live Mouse Trajectory Heatmap & Floating Debug HUD (`src/components/TelemetryHUD.jsx`)**: Togglable full-screen HTML5 `<canvas>` (`pointer-events: none`) rendering smooth green-to-red cursor trajectories + a floating corner Debug HUD with live metrics and Session Store API polling.
 
 ---
 
-## 📁 Project Architecture & Folder Structure
+## 📁 Monorepo Folder Structure
 
 ```
 AuraGen (Infotact Solutions)/
-├── package.json                   # Dependencies: @langchain/openai, @langchain/core, dotenv
-├── .env.example                   # Environment configuration template
-├── .env                           # Local environment variables (API keys, model)
-├── .gitignore                     # Git ignore rules
-├── README.md                      # Comprehensive documentation and run guide
-├── src/
-│   ├── index.js                   # Unified module exports
-│   ├── agent.js                   # Main generateComponent() agent with retry loop & validation
-│   ├── chains/
-│   │   └── codeGenChain.js        # LCEL pipeline: Prompt -> ChatOpenAI (GPT-4o) -> Parser
-│   ├── config/
-│   │   └── designSystem.js        # Infotact Design System tokens & System Prompt specification
-│   ├── parsers/
-│   │   └── codeBlockParser.js     # Custom BaseOutputParser stripping markdown backticks
-│   └── prompts/
-│       └── codeGenPrompt.js       # ChatPromptTemplate uniting system rules & friction context
-└── tests/
-    ├── test-codegen.js            # Comprehensive test suite (Unit, retry, live & mock E2E)
-    └── output/                    # Output directory for generated React component artifacts
-        └── GeneratedWizardComponent.jsx
+├── .env.example                           # Monorepo environment reference
+├── .gitignore                             # Git ignore rules
+├── package.json                           # Root convenience scripts (run both servers together)
+├── README.md                              # Project documentation & run guide
+├── scripts/
+│   └── dev.mjs                            # Zero-dependency runner launching backend + frontend together
+├── backend/
+│   ├── .env                               # Local backend environment variables
+│   ├── .env.example                       # Backend environment template
+│   ├── package.json                       # Backend dependencies (ws, dotenv)
+│   ├── src/
+│   │   ├── config/
+│   │   │   └── constants.js               # WS_PORT, threshold, cooldown, default form schema
+│   │   ├── services/
+│   │   │   ├── codeGenService.js          # Teammate module adapter (falls back to stub)
+│   │   │   └── codeGenStub.js             # Week 1 placeholder React wizard generator
+│   │   ├── validators/
+│   │   │   └── telemetryValidator.js      # Strict shared JSON format validator
+│   │   └── server.js                      # HTTP /health + WebSocket server
+│   └── tests/
+│       └── test-ws-server.js              # Automated WebSocket integration test suite
+└── frontend/
+    ├── .env.local                         # Local frontend environment variables
+    ├── .env.local.example                 # Frontend environment template
+    ├── next.config.mjs                    # Next.js configuration
+    ├── package.json                       # Next.js, React, Tailwind CSS dependencies
+    ├── postcss.config.mjs                 # PostCSS configuration
+    ├── tailwind.config.js                 # Tailwind CSS configuration
+    └── src/
+        ├── app/
+        │   ├── globals.css                # Tailwind directives
+        │   ├── layout.js                  # Root app layout
+        │   └── page.js                    # Financial Form Demo + Telemetry HUD + Code Drawer
+        ├── components/
+        │   ├── FinancialForm.jsx          # 21-field, 5-section complex financial form + validation
+        │   ├── GeneratedCodeDrawer.jsx    # Inspector modal for received `{ type: "component", code }`
+        │   └── TelemetryHUD.jsx           # Live WS status, score bar, metrics, friction simulator
+        ├── data/
+        │   └── financialFormSchema.js     # Field schema & per-field/full-form validation logic
+        ├── hooks/
+        │   ├── useTelemetry.js            # Mouse velocity, hesitation, rage clicks & score hook
+        │   └── useWebSocket.js            # Auto-reconnecting WS hook (`sendTelemetry`, `onMessage`)
+        └── services/
+            └── wsService.js               # Underlying WebSocket client with exponential backoff
 ```
 
 ---
 
-## 🔄 LangChain LCEL Pipeline
+## 🔌 Shared WebSocket Protocol
 
-```
-┌────────────────────────────────────────────────────────┐
-│                   Input Parameters                     │
-│  { activeField, formFields, userInput, score }        │
-└───────────────────────────┬────────────────────────────┘
-                            │
-                            ▼
-┌────────────────────────────────────────────────────────┐
-│               src/prompts/codeGenPrompt.js             │
-│  - SystemMessage: Design System tokens & safety rules  │
-│  - HumanMessage: Telemetry, friction spot, form schema │
-└───────────────────────────┬────────────────────────────┘
-                            │
-                            ▼
-┌────────────────────────────────────────────────────────┐
-│              src/chains/codeGenChain.js                │
-│  ChatOpenAI (GPT-4o, temperature: 0.2)                 │
-└───────────────────────────┬────────────────────────────┘
-                            │
-                            ▼
-┌────────────────────────────────────────────────────────┐
-│             src/parsers/codeBlockParser.js             │
-│  Extracts raw JSX code block, strips markdown fences   │
-└───────────────────────────┬────────────────────────────┘
-                            │
-                            ▼
-┌────────────────────────────────────────────────────────┐
-│             src/agent.js (AST Pre-Validator)           │
-│  1. Check: Non-empty code string                       │
-│  2. Check: Has "export default function ..."           │
-│  3. Check: Pure Tailwind classes                       │
-│  4. Safety: No eval(), new Function(), fetch(), window │
-└─────────────┬────────────────────────────┬─────────────┘
-              │ Valid                      │ Invalid (Retry <= 2)
-              ▼                            ▼
-       [Return Raw Code]         [Append Error Feedback & Retry]
-```
-
----
-
-## 🛡️ Strict Prompt & Security Constraints
-
-The pipeline enforces strict security and architectural rules at both the prompt level and validation level:
-
-1. **Single Default Export**: Must export exactly one functional component:
-   \`\`\`jsx
-   export default function DynamicFormWizard({ initialValues = {}, onSubmit, onStepChange, onCancel }) { ... }
-   \`\`\`
-2. **Pure Tailwind CSS**: Only Tailwind classes (no external CSS files, no style tags).
-3. **No External Component Imports**: No Material UI, Ant Design, or lucide-react. Icons are self-contained inline SVGs.
-4. **Zero Malicious Execution**:
-   - 🚫 `eval()` or `new Function()`
-   - 🚫 Network calls: `fetch()`, `axios`, `XMLHttpRequest`, `WebSocket`
-   - 🚫 Global DOM manipulation: `window`, `document`, `localStorage`, `sessionStorage`
-5. **State Preservation**: Component initializes form state using `initialValues` merged with `userInput` so the user never re-types data.
-6. **Automatic Retries**: If the output is empty or lacks a default export, the agent automatically retries up to **2 times** (3 total attempts), appending targeted error feedback into the next prompt.
-
----
-
-## 🚀 Installation & Setup
-
-### Prerequisites
-- **Node.js**: v18.0.0 or later (tested on Node v25)
-- **OpenAI API Key** (with GPT-4o access)
-
-### 1. Install Dependencies
-```bash
-npm install
-```
-
-### 2. Configure Environment Variables
-Copy `.env.example` to `.env`:
-```bash
-cp .env.example .env
-```
-Edit `.env` and configure your OpenAI API key:
-```ini
-OPENAI_API_KEY=sk-your-openai-key-here
-OPENAI_MODEL_NAME=gpt-4o
-OPENAI_TEMPERATURE=0.2
-MAX_RETRIES=2
-```
-
----
-
-## 🧪 Running the Tests
-
-The project includes an end-to-end test suite (`tests/test-codegen.js`) that tests:
-- Clean markdown code block stripping via `CodeBlockOutputParser`
-- Security and structure pre-validation (catching `eval`, `fetch`, missing exports)
-- `PromptTemplate` message formatting with dynamic friction telemetry
-- The 2-attempt retry recovery engine
-- End-to-end component generation on a sample complex 12-field financial application
-
-### Option A: Local / Mock Mode (No OpenAI credits needed)
-Runs all tests offline in mock simulation mode:
-```bash
-npm run test:mock
-```
-
-### Option B: Live GPT-4o Generation
-Runs tests against live OpenAI GPT-4o (requires valid `OPENAI_API_KEY` in `.env`):
-```bash
-npm test
-```
-
-When test 5 completes, the generated self-healing React component is saved to:
-`tests/output/GeneratedWizardComponent.jsx`
-
----
-
-## 💻 API Reference
-
-### `generateComponent({ activeField, formFields, userInput, score }, options)`
-
-Generates a validated React code string tailored to the user's friction point.
-
-```javascript
-import { generateComponent } from "./src/index.js";
-
-const rawCode = await generateComponent({
-  // Field where user experienced hesitation or rage clicks
-  activeField: "annualIncome",
-
-  // Schema or array of fields from the complex static form
-  formFields: [
-    { name: "businessLegalName", label: "Business Legal Name", type: "text" },
-    { name: "annualIncome", label: "Net Owner Annual Income", type: "number" },
-    { name: "requestedFacilityAmount", label: "Facility Amount", type: "number" }
-  ],
-
-  // Data the user has already entered before getting stuck
-  userInput: {
-    businessLegalName: "Apex Meridian Logistics LLC",
-    requestedFacilityAmount: 350000
-  },
-
-  // Real-time Cognitive Load Score (0-100)
-  score: 88
-});
-
-console.log(rawCode);
-```
-
-### Shared Telemetry Message Format (AuraGen Protocol)
+### Client → Server (`telemetry`)
 ```json
 {
   "type": "telemetry",
-  "sessionId": "sess_infotact_9921",
+  "sessionId": "sess_a1b2c3d4",
   "timestamp": 1700000000000,
   "metrics": {
-    "mouseVelocity": 480.2,
-    "hesitationMs": 14500,
-    "rageClicks": 7,
-    "clickErrorRate": 0.52
+    "mouseVelocity": 420,
+    "hesitationMs": 9500,
+    "rageClicks": 4,
+    "clickErrorRate": 0.35
   },
-  "cognitiveLoadScore": 88,
+  "cognitiveLoadScore": 84,
   "activeField": "annualIncome"
 }
 ```
 
-### Server Reply Format
+### Server → Client (`component`)
+When `cognitiveLoadScore >= COGNITIVE_LOAD_THRESHOLD` (default `70`):
 ```json
 {
   "type": "component",
-  "code": "export default function DynamicFormWizard({ initialValues = {}, onSubmit }) { ... }"
+  "code": "import React, { useState } from \"react\";\nexport default function DynamicFormWizard(...) { ... }"
 }
 ```
 
 ---
 
-## 🔮 Roadmap & Next Steps
+## 🚀 Setup & Running Frontend + Backend Together
 
-- **Week 1 (Completed)**: LangChain.js code-gen pipeline, GPT-4o prompt engineering, Infotact design system, extraction parser, and retry engine.
-- **Week 2**: Babel AST security validation layer (Node.js) & in-browser dynamic compiler (Next.js Suspense shell).
-- **Week 3**: Framer Motion layout morphing transitions & WebSocket streaming server.
-- **Week 4**: Token streaming latency optimization (< 2s) & automated fallback degradation.
+### 1. Install All Dependencies
+From the monorepo root:
+```bash
+npm run install:all
+```
+*(Or manually run `npm install` inside both `backend/` and `frontend/`.)*
 
-=======
-# Project-1---AuraGen-Infotact-Solutions-
->>>>>>> d347c73b9813367e22c3cc690045cfb2aa75217a
+### 2. Verify Environment Files
+Default local config files are included:
+- `backend/.env` (`WS_PORT=8080`, `COGNITIVE_LOAD_THRESHOLD=70`)
+- `frontend/.env.local` (`NEXT_PUBLIC_WS_URL=ws://localhost:8080`, `NEXT_PUBLIC_COGNITIVE_LOAD_THRESHOLD=70`)
+
+*(See `.env.example`, `backend/.env.example`, and `frontend/.env.local.example` for reference.)*
+
+### 3. Run Frontend & Backend Together
+
+#### Option A: Single Command from Root (Recommended)
+```bash
+npm run dev
+```
+This launches:
+- **Backend WebSocket Server**: `ws://localhost:8080` (health check: `http://localhost:8080/health`)
+- **Frontend Next.js App**: `http://localhost:3000`
+
+#### Option B: Two Separate Terminals
+**Terminal 1 (Backend):**
+```bash
+cd backend
+npm run dev
+```
+
+**Terminal 2 (Frontend):**
+```bash
+cd frontend
+npm run dev
+```
+
+---
+
+## 🧪 Verification & Testing
+
+### Automated Backend WebSocket Tests
+```bash
+npm run test:backend
+```
+Tests `/health`, WebSocket handshake, invalid telemetry error handling, low-score logging, and high-score `{ type: "component", code }` generation.
+
+### Frontend Production Build Check
+```bash
+npm run build:frontend
+```
+
+### Interactive Demo Walkthrough
+1. Open `http://localhost:3000` in your browser.
+2. Observe the **TelemetryHUD** banner at the top showing `WS Connected` and live velocity/hesitation metrics streaming to the backend terminal.
+3. Interact with the 21-field **Commercial Credit & Wealth Disclosure** form (test validation by clicking **Validate & Submit Application** or clicking **Prefill Partial Data**).
+4. Click **Simulate Friction Spike** (or rapidly click 3+ times in one spot / wait idle on a field) to push `cognitiveLoadScore >= 70`.
+5. Watch the backend console log the threshold breach and immediately push `{ type: "component", code }` back to the frontend, opening the **Generated Component Preview** drawer.
+
+---
+
+## 🔗 Integrating Teammate's LangChain Module
+
+When the AI/Backend teammate's `generateComponent()` LangChain module is ready:
+1. Place or link their module at `backend/src/codegen/agent.js` (exporting `generateComponent({ activeField, formFields, userInput, score })`).
+2. Set `USE_TEAMMATE_CODEGEN=true` and add `OPENAI_API_KEY=...` in `backend/.env`.
+3. `backend/src/services/codeGenService.js` will automatically delegate to their LangChain pipeline instead of the Week 1 stub.
+
