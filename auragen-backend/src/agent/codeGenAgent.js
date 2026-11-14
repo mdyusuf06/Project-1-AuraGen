@@ -1,6 +1,5 @@
 // ============================================================
 // CODE-GEN AGENT — GEMINI VERSION
-// pipeline, same logic — just swapped OpenAI for Gemini//
 // ============================================================
 
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
