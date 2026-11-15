@@ -29,7 +29,7 @@ AuraGen (Infotact Solutions)/
 ├── .env.example                           # Monorepo environment reference
 ├── .gitignore                             # Git ignore rules
 ├── package.json                           # Root convenience scripts (run both servers together)
-├── README.md                              # Project documentation & run guide
+├── README.md                              # Project documentation and run guide
 ├── scripts/
 │   └── dev.mjs                            # Zero-dependency runner launching backend + frontend together
 ├── backend/
