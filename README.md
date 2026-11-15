@@ -160,7 +160,7 @@ npm run build:frontend
 ### Interactive Demo Walkthrough
 1. Open `http://localhost:3000` in your browser.
 2. Observe the **TelemetryHUD** banner at the top showing `WS Connected` and live velocity/hesitation metrics streaming to the backend terminal.
-3. Interact with the 21-field **Commercial Credit & Wealth Disclosure** form (test validation by clicking **Validate & Submit Application** or clicking **Prefill Partial Data**).
+3. Interact with the 21-field **Commercial Credit & Wealth Disclosure** form (test validation by clicking **Validate and Submit Application** or clicking **Prefill Partial Data**).
 4. Click **Simulate Friction Spike** (or rapidly click 3+ times in one spot / wait idle on a field) to push `cognitiveLoadScore >= 70`.
 5. Watch the backend console log the threshold breach and immediately push `{ type: "component", code }` back to the frontend, opening the **Generated Component Preview** drawer.
 
