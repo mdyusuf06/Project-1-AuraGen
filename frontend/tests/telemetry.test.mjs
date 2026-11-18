@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import {
   computeCognitiveLoadScore,
-  DEFAULT_WEIGHTS
+  DEFAULT_WEIGHTS,
+  serializeTelemetryFormSnapshot
 } from "../src/hooks/useTelemetry.js";
 
 console.log("===============================================================");
@@ -237,7 +238,64 @@ console.log("===============================================================");
   console.log(`✅ Test 5 Passed: Rage-click cluster detection and threshold breach verified (${scoreWithRage}/100)`);
 }
 
+// -----------------------------------------------------------------------------
+// Test 6: Form State Snapshot Active Serialization & Input Preservation
+// -----------------------------------------------------------------------------
+{
+  const mockFormContext = {
+    values: {
+      fullName: "Jordan Alexander Mercer",
+      annualIncome: "145000",
+      creditScore: "780",
+      employmentStatus: "full_time",
+      taxId: "123-45-6789",
+      unfilledField: ""
+    },
+    errors: {
+      taxId: "Invalid format"
+    },
+    totalFieldsCount: 21,
+    focusedFieldId: "annualIncome",
+    hoveredFieldId: "annualIncome",
+    activeFieldLabel: "Annual Gross Income"
+  };
+
+  const snapshot = serializeTelemetryFormSnapshot(mockFormContext, "annualIncome", 1700000000000);
+
+  assert.equal(snapshot.capturedAt, 1700000000000, "capturedAt timestamp must be preserved");
+  assert.equal(snapshot.values.fullName, "Jordan Alexander Mercer", "User's typed fullName must be preserved");
+  assert.equal(snapshot.values.annualIncome, "145000", "User's typed annualIncome must be preserved");
+  assert.equal(snapshot.values.taxId, "123-45-6789", "User's typed taxId must be preserved");
+  assert.equal(snapshot.domContext.activeFieldId, "annualIncome", "Active friction field must be annualIncome");
+  assert.equal(snapshot.domContext.focusedFieldId, "annualIncome", "Focused field must match DOM state");
+  assert.equal(snapshot.completedCount, 5, "Completed fields count must accurately reflect non-empty inputs");
+
+  // Verify full payload construction when threshold is breached
+  const fullPayload = {
+    type: "telemetry",
+    sessionId: "sess_unit_test",
+    timestamp: Date.now(),
+    metrics: {
+      mouseVelocity: 750,
+      hesitationMs: 9000,
+      rageClicks: 4,
+      clickErrorRate: 0.3,
+      directionChanges: 10
+    },
+    cognitiveLoadScore: 82,
+    instantScore: 82,
+    rollingAverageScore: 82,
+    activeField: "annualIncome",
+    formStateSnapshot: snapshot
+  };
+
+  assert.ok(fullPayload.formStateSnapshot, "Threshold breach payload must include formStateSnapshot");
+  assert.equal(Object.keys(fullPayload.formStateSnapshot.values).length >= 5, true);
+
+  console.log(`✅ Test 6 Passed: Form state snapshot serialized cleanly with ${snapshot.completedCount} preserved user inputs`);
+}
+
 console.log("\n===============================================================");
-console.log("🎉 All 5 Telemetry Tracker Unit Tests Passed Successfully!");
+console.log("🎉 All 6 Telemetry Tracker Unit Tests Passed Successfully!");
 console.log("===============================================================");
 

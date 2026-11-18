@@ -210,10 +210,13 @@ export default function AuraGenDemoPage() {
             >
               <DynamicUIRenderer
                 code={latestComponent.code}
-                initialValues={formContext}
+                initialValues={formContext?.values || formContext}
                 onSubmit={(data) => {
                   console.log("[AuraGen] Dynamic Form Submitted successfully:", data);
-                  setFormContext((prev) => ({ ...prev, ...data }));
+                  setFormContext((prev) => ({
+                    ...prev,
+                    values: { ...(prev?.values || {}), ...data }
+                  }));
                   alert("Application submitted successfully via AuraGen Generative Wizard!");
                   setIsDynamicMode(false);
                 }}
@@ -235,6 +238,7 @@ export default function AuraGenDemoPage() {
                 activeField={activeField}
                 onActiveFieldChange={setActiveField}
                 onFormContextChange={setFormContext}
+                initialValues={formContext?.values}
               />
             </motion.div>
           )}

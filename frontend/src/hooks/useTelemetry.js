@@ -130,19 +130,57 @@ export function useTelemetry({
 
   const buildFormStateSnapshot = useCallback((fieldId, now) => {
     const ctx = formContextRef.current || {};
+
+    // 1. If pre-serialized snapshot exists from FinancialForm, adopt and normalize
+    if (ctx.formStateSnapshot && typeof ctx.formStateSnapshot === "object") {
+      const snap = ctx.formStateSnapshot;
+      const values = snap.values ? { ...snap.values } : (ctx.values ? { ...ctx.values } : {});
+      const cleanValues = {};
+      for (const [k, v] of Object.entries(values)) {
+        cleanValues[k] = v !== undefined && v !== null ? v : "";
+      }
+      const completedFields = Object.keys(cleanValues).filter((k) => cleanValues[k] !== "");
+      return {
+        capturedAt: now,
+        values: cleanValues,
+        completedFields: snap.completedFields || completedFields,
+        completedCount: snap.completedCount ?? completedFields.length,
+        totalFieldsCount: snap.totalFieldsCount || ctx.totalFieldsCount || 21,
+        domContext: {
+          activeFieldId: fieldId || snap.domContext?.activeFieldId || "",
+          activeFieldLabel: ctx.activeFieldLabel || snap.domContext?.activeFieldLabel || fieldId,
+          activeSectionId: ctx.activeSectionId || snap.domContext?.activeSectionId || "",
+          focusedFieldId: ctx.focusedFieldId || snap.domContext?.focusedFieldId || null,
+          hoveredFieldId: ctx.hoveredFieldId || snap.domContext?.hoveredFieldId || null,
+          completedFieldsCount: snap.completedCount ?? completedFields.length,
+          totalFieldsCount: snap.totalFieldsCount || ctx.totalFieldsCount || 21,
+          validationErrors: ctx.errors ? { ...ctx.errors } : (snap.domContext?.validationErrors || {}),
+          scrollY: typeof window !== "undefined" ? Math.round(window.scrollY || 0) : 0
+        }
+      };
+    }
+
+    // 2. Fallback to extracting from raw ctx.values
     const values = ctx.values ? { ...ctx.values } : {};
-    const completedFieldsCount = Object.values(values).filter(
-      (v) => v !== "" && v !== null && v !== undefined
-    ).length;
+    const cleanValues = {};
+    for (const [k, v] of Object.entries(values)) {
+      cleanValues[k] = v !== undefined && v !== null ? v : "";
+    }
+    const completedFields = Object.keys(cleanValues).filter((k) => cleanValues[k] !== "");
 
     return {
       capturedAt: now,
-      values,
+      values: cleanValues,
+      completedFields,
+      completedCount: completedFields.length,
+      totalFieldsCount: ctx.totalFieldsCount || 21,
       domContext: {
-        activeFieldId: fieldId,
+        activeFieldId: fieldId || "",
         activeFieldLabel: ctx.activeFieldLabel || fieldId,
         activeSectionId: ctx.activeSectionId || "",
-        completedFieldsCount,
+        focusedFieldId: ctx.focusedFieldId || null,
+        hoveredFieldId: ctx.hoveredFieldId || null,
+        completedFieldsCount: completedFields.length,
         totalFieldsCount: ctx.totalFieldsCount || 21,
         validationErrors: ctx.errors ? { ...ctx.errors } : {},
         scrollY: typeof window !== "undefined" ? Math.round(window.scrollY || 0) : 0
@@ -242,7 +280,11 @@ export function useTelemetry({
 
       const field = overridePayload?.activeField ?? activeFieldRef.current;
       const cursor = { x: Math.round(t.cursorX), y: Math.round(t.cursorY) };
-      const isThresholdBreached = rollingAverageScore >= thresholdRef.current;
+      const isThresholdBreached =
+        rollingAverageScore >= thresholdRef.current ||
+        instantScore >= thresholdRef.current ||
+        (overridePayload?.fillWindowWithScore !== undefined &&
+          overridePayload.fillWindowWithScore >= thresholdRef.current);
 
       // Serialize form values & DOM context whenever cognitive load threshold is breached
       const formStateSnapshot = isThresholdBreached
@@ -276,7 +318,8 @@ export function useTelemetry({
         activeField: field,
         activeFieldId: field,
         windowSampleCount: windowSamples.length,
-        lastSnapshotSentAt: t.lastSnapshotSentAt
+        lastSnapshotSentAt: t.lastSnapshotSentAt,
+        formStateSnapshot: formStateSnapshot || null
       });
 
       if (isConnectedRef.current && sendTelemetryRef.current) {
@@ -519,6 +562,10 @@ export function useTelemetry({
     });
   }, [emitSnapshot]);
 
+  const getFormStateSnapshot = useCallback(() => {
+    return buildFormStateSnapshot(activeFieldRef.current, Date.now());
+  }, [buildFormStateSnapshot]);
+
   const score = telemetrySnapshot.cognitiveLoadScore;
   const isFrustrated = score >= threshold;
 
@@ -528,8 +575,42 @@ export function useTelemetry({
     activeField: telemetrySnapshot.activeField,
     isFrustrated,
     telemetrySnapshot,
+    formStateSnapshot: telemetrySnapshot.formStateSnapshot,
+    getFormStateSnapshot,
     subscribeTrajectory,
     triggerSimulatedFriction,
     resetTelemetry
+  };
+}
+
+/**
+ * Pure utility function to actively serialize form context into a compliant formStateSnapshot.
+ * Useful for headless testing, offline serialization, or manual telemetry dispatching.
+ */
+export function serializeTelemetryFormSnapshot(formContext = {}, activeField = "", now = Date.now()) {
+  const values = formContext?.values ? { ...formContext.values } : {};
+  const cleanValues = {};
+  for (const [k, v] of Object.entries(values)) {
+    cleanValues[k] = v !== undefined && v !== null ? v : "";
+  }
+  const completedFields = Object.keys(cleanValues).filter((k) => cleanValues[k] !== "");
+
+  return {
+    capturedAt: now,
+    values: cleanValues,
+    completedFields,
+    completedCount: completedFields.length,
+    totalFieldsCount: formContext?.totalFieldsCount || 21,
+    domContext: {
+      activeFieldId: activeField || "",
+      activeFieldLabel: formContext?.activeFieldLabel || activeField,
+      activeSectionId: formContext?.activeSectionId || "",
+      focusedFieldId: formContext?.focusedFieldId || null,
+      hoveredFieldId: formContext?.hoveredFieldId || null,
+      completedFieldsCount: completedFields.length,
+      totalFieldsCount: formContext?.totalFieldsCount || 21,
+      validationErrors: formContext?.errors ? { ...formContext.errors } : {},
+      scrollY: typeof window !== "undefined" ? Math.round(window.scrollY || 0) : 0
+    }
   };
 }
