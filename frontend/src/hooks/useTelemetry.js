@@ -16,23 +16,27 @@ function clamp(val, min, max) {
  * Total: 100 pts
  */
 export const DEFAULT_WEIGHTS = {
-  velocityVariance: 25,  // 0.25 (scaled by standard deviation ~600 px/s or variance ~360,000)
-  directionChanges: 20,  // 0.20 (scaled by 12+ erratic changes in rolling window)
-  hesitation: 25,        // 0.25 (scaled by 8000 ms idle on field)
-  rageClicks: 20,        // 0.20 (scaled by 3+ rage clicks in rolling window)
-  clickErrorRate: 10     // 0.10 (scaled by 1.0 error rate in rolling window)
+  velocityVariance: 25, // 0.25 (scaled by standard deviation ~600 px/s or variance ~360,000)
+  directionChanges: 20, // 0.20 (scaled by 12+ erratic changes in rolling window)
+  hesitation: 25,       // 0.25 (scaled by 8000 ms idle on field)
+  rageClicks: 20,       // 0.20 (scaled by 3+ rage clicks in rolling window)
+  clickErrorRate: 10    // 0.10 (scaled by 1.0 error rate in rolling window)
 };
 
 /**
- * Computes a weighted 0-100 Cognitive Load Score from telemetry metrics.
- * Supports Week 2 calibrated weights:
- * - Velocity variance: 0.25
- * - Direction changes: 0.20
- * - Hesitation: 0.25
- * - Rage clicks: 0.20
- * - Click errors: 0.10
+ * Normalizes individual raw telemetry metrics into a consistent 0-100 range.
+ *
+ * Normalization scales:
+ * - velocityVariance: stdDev (sqrt of variance) normalized against 600 px/s (or mouseVelocity against 1200 px/s fallback)
+ * - directionChanges: scaled against 12 erratic changes in rolling window
+ * - hesitation: scaled against 8000 ms pause on active field
+ * - rageClicks: scaled against 3 rapid click clusters
+ * - clickErrorRate: 0.0 to 1.0 scaled to 0-100%
+ *
+ * @param {Object} metrics Raw metrics
+ * @returns {Object} Normalized metrics, each in [0, 100]
  */
-export function computeCognitiveLoadScore(metrics, customWeights = {}) {
+export function normalizeTelemetryMetrics(metrics) {
   const {
     mouseVelocity = 0,
     velocityVariance = null,
@@ -42,49 +46,83 @@ export function computeCognitiveLoadScore(metrics, customWeights = {}) {
     directionChanges = 0
   } = metrics || {};
 
-  const weights = { ...DEFAULT_WEIGHTS, ...customWeights };
-
-  // 1. Velocity Variance component (0.25 weight)
-  // Evaluates standard deviation or variance of velocity in rolling window.
-  // Falls back gracefully to mouseVelocity / 1200 if variance is omitted.
-  let varianceRatio = 0;
-  if (velocityVariance !== null && velocityVariance !== undefined) {
+  // Velocity Variance normalization (0 - 100)
+  let normVariance = 0;
+  if (velocityVariance !== null && velocityVariance !== undefined && velocityVariance >= 0) {
     const stdDev =
       velocityVariance > 2500 ? Math.sqrt(velocityVariance) : velocityVariance;
-    varianceRatio = clamp(stdDev / 600, 0, 1);
-  } else if (mouseVelocity !== undefined) {
-    varianceRatio = clamp(mouseVelocity / 1200, 0, 1);
+    normVariance = clamp((stdDev / 600) * 100, 0, 100);
+  } else if (mouseVelocity !== undefined && mouseVelocity !== null && mouseVelocity >= 0) {
+    normVariance = clamp((mouseVelocity / 1200) * 100, 0, 100);
   }
-  const varianceWeight = weights.velocityVariance ?? weights.velocity ?? 25;
-  const velocityScore = varianceRatio * varianceWeight;
 
-  // 2. Hesitation component (0.25 weight, max 8000ms)
-  const hesitationWeight = weights.hesitation ?? 25;
-  const hesitationScore = clamp(
-    (hesitationMs / 8000) * hesitationWeight,
-    0,
-    hesitationWeight
-  );
+  // Hesitation normalization (0 - 100, max 8000ms)
+  const normHesitation = clamp((hesitationMs / 8000) * 100, 0, 100);
 
-  // 3. Rage Clicks component (0.20 weight, max 3+ incidents)
-  const rageWeight = weights.rageClicks ?? 20;
-  const rageScore = clamp((rageClicks / 3) * rageWeight, 0, rageWeight);
+  // Rage clicks normalization (0 - 100, max 3 incidents)
+  const normRageClicks = clamp((rageClicks / 3) * 100, 0, 100);
 
-  // 4. Click Error Rate component (0.10 weight, 0.0 - 1.0 rate)
-  const errorWeight = weights.clickErrorRate ?? 10;
-  const errorScore = clamp(clickErrorRate * errorWeight, 0, errorWeight);
+  // Click error rate normalization (0 - 100)
+  const normClickErrors = clamp(clickErrorRate * 100, 0, 100);
 
-  // 5. Direction Changes component (0.20 weight, max 12+ erratic deflections)
-  const directionWeight = weights.directionChanges ?? 20;
-  const directionScore = clamp(
-    (directionChanges / 12) * directionWeight,
-    0,
-    directionWeight
-  );
+  // Direction changes normalization (0 - 100, max 12 changes)
+  const normDirection = clamp((directionChanges / 12) * 100, 0, 100);
+
+  return {
+    velocityVariance: Number(normVariance.toFixed(1)),
+    hesitation: Number(normHesitation.toFixed(1)),
+    rageClicks: Number(normRageClicks.toFixed(1)),
+    clickErrorRate: Number(normClickErrors.toFixed(1)),
+    directionChanges: Number(normDirection.toFixed(1))
+  };
+}
+
+/**
+ * Computes a weighted 0-100 Cognitive Load Score from telemetry metrics.
+ * Supports Week 2 calibrated weights:
+ * - Velocity variance: 0.25 (25%)
+ * - Direction changes: 0.20 (20%)
+ * - Hesitation: 0.25 (25%)
+ * - Rage clicks: 0.20 (20%)
+ * - Click errors: 0.10 (10%)
+ *
+ * Accepts weights configured either as points (e.g. 25) or decimals (e.g. 0.25).
+ */
+export function computeCognitiveLoadScore(metrics, customWeights = {}) {
+  const norm = normalizeTelemetryMetrics(metrics);
+  const weights = { ...DEFAULT_WEIGHTS, ...customWeights };
+
+  // Allow weights specified either as points (25) or fractions (0.25)
+  const getWeightFraction = (key, fallbackKey, defaultPts) => {
+    const val = weights[key] ?? (fallbackKey ? weights[fallbackKey] : undefined) ?? defaultPts;
+    return val > 1 ? val / 100 : val;
+  };
+
+  const wVariance = getWeightFraction("velocityVariance", "velocity", 25);
+  const wHesitation = getWeightFraction("hesitation", null, 25);
+  const wRage = getWeightFraction("rageClicks", null, 20);
+  const wError = getWeightFraction("clickErrorRate", null, 10);
+  const wDirection = getWeightFraction("directionChanges", null, 20);
 
   const total =
-    velocityScore + hesitationScore + rageScore + errorScore + directionScore;
+    norm.velocityVariance * wVariance +
+    norm.hesitation * wHesitation +
+    norm.rageClicks * wRage +
+    norm.clickErrorRate * wError +
+    norm.directionChanges * wDirection;
+
   return Math.round(clamp(total, 0, 100));
+}
+
+/**
+ * Applies asymmetric exponential smoothing to prevent sudden score fluctuations.
+ * Uses fast-attack (alpha ~ 0.45) for rising cognitive load to remain responsive,
+ * and gentle decay (alpha ~ 0.65 - 0.75) for falling load to prevent UI flicker.
+ */
+export function applyExponentialSmoothing(prevScore, rawScore, alpha = 0.65) {
+  if (typeof prevScore !== "number" || isNaN(prevScore)) return rawScore;
+  const effAlpha = rawScore > prevScore ? Math.min(alpha, 0.45) : alpha;
+  return Math.round(prevScore * effAlpha + rawScore * (1 - effAlpha));
 }
 
 /**
@@ -96,9 +134,12 @@ export function computeCognitiveLoadScore(metrics, customWeights = {}) {
  * - Direction changes tracking (erratic angles > 45 deg)
  * - User hesitation & pause tracking
  * - Rage click clusters (>= 3 in 1s / 35px) and click-error rate
+ * - Metric normalization into consistent 0–100 scale per metric channel
  * - Exponential smoothing to prevent sudden score fluctuations
  * - 10-second rolling window event queue with automatic eviction
  * - Configurable Cognitive Load threshold (default 70) and custom weights
+ * - Minimum activity requirement to prevent cold-start false triggers
+ * - 60-second cooldown after a trigger episode, preventing repeated generation calls
  * - onThreshold callback invoked when score crosses threshold
  * - 1000ms WebSocket streaming cadence
  * - Clean listener and timer teardown
@@ -110,8 +151,9 @@ export function useTelemetry({
   weights = DEFAULT_WEIGHTS,
   streamIntervalMs = 1000,
   windowDurationMs = 10000,
-  smoothingAlpha = 0.65, // Exponential smoothing coefficient (fast attack, smooth decay)
-  cooldownMs = 60000,   // Cooldown after trigger episode (default 60s)
+  smoothingAlpha = 0.65, // Exponential smoothing coefficient
+  cooldownMs = 60000,   // 60-second cooldown after generation trigger (default 60s)
+  minInteractions = 2,  // Minimum activity requirement before calculating / triggering
   isConnected = false,
   sendTelemetry,
   onThreshold
@@ -125,8 +167,21 @@ export function useTelemetry({
       clickErrorRate: 0,
       directionChanges: 0
     },
+    normalizedMetrics: {
+      velocityVariance: 0,
+      hesitation: 0,
+      rageClicks: 0,
+      clickErrorRate: 0,
+      directionChanges: 0
+    },
     cognitiveLoadScore: 0,
-    activeField: activeField || ""
+    rawScore: 0,
+    activeField: activeField || "",
+    threshold,
+    isTriggered: false,
+    isCooldownActive: false,
+    cooldownRemaining: 0,
+    hasMinimumActivity: false
   });
 
   const activeFieldRef = useRef(activeField || "");
@@ -144,6 +199,12 @@ export function useTelemetry({
   const sendTelemetryRef = useRef(sendTelemetry);
   sendTelemetryRef.current = sendTelemetry;
 
+  const cooldownMsRef = useRef(cooldownMs);
+  cooldownMsRef.current = cooldownMs;
+
+  const minInteractionsRef = useRef(minInteractions);
+  minInteractionsRef.current = minInteractions;
+
   // Tracker state holding rolling window buffers
   const trackerRef = useRef({
     lastSampleX: null,
@@ -153,6 +214,8 @@ export function useTelemetry({
     smoothedVelocity: 0,
     velocityVariance: 0,
     lastInteractionTime: Date.now(),
+    totalInteractions: 0, // Counts user interactions to enforce minimum activity requirement
+    hasUserInteracted: false,
     // Rolling 10s Window Buffers: { time, ... }
     velocitySamples: [],
     directionEvents: [],
@@ -185,9 +248,10 @@ export function useTelemetry({
       const t = trackerRef.current;
       pruneOldEvents(now);
 
-      const hesitationMs = activeFieldRef.current
-        ? Math.max(0, now - t.lastInteractionTime)
-        : 0;
+      const hesitationMs =
+        t.hasUserInteracted && activeFieldRef.current
+          ? Math.max(0, now - t.lastInteractionTime)
+          : 0;
 
       const totalClicks = t.clickEvents.length;
       const errorClicks = t.clickEvents.filter((c) => c.isError).length;
@@ -233,48 +297,121 @@ export function useTelemetry({
       const now = Date.now();
       const t = trackerRef.current;
 
-      const metrics = overridePayload?.metrics || computeCurrentMetrics(now);
-      const rawScore =
-        overridePayload?.cognitiveLoadScore ??
-        (t.manualOverrideScore !== null
-          ? t.manualOverrideScore
-          : computeCognitiveLoadScore(metrics, weights));
+      // Minimum activity requirement check:
+      // Prevents cold-start false positives before the user has actually engaged with the form.
+      const hasMinimumActivity =
+        t.manualOverrideScore !== null ||
+        overridePayload?.cognitiveLoadScore !== undefined ||
+        t.totalInteractions >= minInteractionsRef.current ||
+        t.velocitySamples.length >= minInteractionsRef.current ||
+        t.clickEvents.length >= 1;
 
-      // Apply asymmetric exponential smoothing to prevent sudden score fluctuations
+      const metrics = overridePayload?.metrics || computeCurrentMetrics(now);
+      const normalizedMetrics = normalizeTelemetryMetrics(metrics);
+
+      // Raw score computed using configured weights, or 0 if minimum activity not yet met
+      let rawScore = 0;
+      if (hasMinimumActivity) {
+        rawScore =
+          overridePayload?.cognitiveLoadScore ??
+          (t.manualOverrideScore !== null
+            ? t.manualOverrideScore
+            : computeCognitiveLoadScore(metrics, weights));
+      }
+
+      // Apply exponential smoothing to the final score
       let cognitiveLoadScore;
       if (
         t.manualOverrideScore !== null ||
-        overridePayload?.cognitiveLoadScore !== undefined
+        overridePayload?.cognitiveLoadScore !== undefined ||
+        !hasMinimumActivity
       ) {
-        // Overrides and synthetic spikes apply immediately
         cognitiveLoadScore = rawScore;
         t.smoothedScore = rawScore;
       } else {
-        // Fast attack (responsive rise) and gentle decay (smooth recovery)
-        const alpha =
-          rawScore > t.smoothedScore
-            ? Math.min(smoothingAlpha, 0.45)
-            : smoothingAlpha;
-        t.smoothedScore = Math.round(
-          t.smoothedScore * alpha + rawScore * (1 - alpha)
+        cognitiveLoadScore = applyExponentialSmoothing(
+          t.smoothedScore,
+          rawScore,
+          smoothingAlpha
         );
-        cognitiveLoadScore = clamp(t.smoothedScore, 0, 100);
+        t.smoothedScore = cognitiveLoadScore;
       }
 
+      // Cooldown tracking (60s default)
+      const currentCooldownMs = cooldownMsRef.current;
+      const isCooldownActive =
+        t.lastThresholdFireTime > 0 &&
+        now - t.lastThresholdFireTime < currentCooldownMs;
+      const cooldownRemaining = isCooldownActive
+        ? Math.max(0, Math.ceil((currentCooldownMs - (now - t.lastThresholdFireTime)) / 1000))
+        : 0;
+
       const field = overridePayload?.activeField ?? activeFieldRef.current;
+      const activeThreshold = thresholdRef.current;
+
+      // Trigger condition:
+      // 1. Score >= threshold
+      // 2. Minimum activity requirement met
+      // 3. Not in cooldown (prevents repeated generation requests within 60s)
+      // 4. Not already fired for the current high-friction episode (episode latch)
+      let isTriggered = t.hasFiredThresholdForEpisode;
+
+      if (cognitiveLoadScore >= activeThreshold) {
+        if (hasMinimumActivity && !isCooldownActive && !t.hasFiredThresholdForEpisode) {
+          t.hasFiredThresholdForEpisode = true;
+          t.lastThresholdFireTime = now;
+          isTriggered = true;
+
+          const triggerSnapshot = {
+            type: "telemetry",
+            sessionId,
+            timestamp: now,
+            metrics,
+            normalizedMetrics,
+            rawScore,
+            cognitiveLoadScore,
+            threshold: activeThreshold,
+            isTriggered: true,
+            isCooldownActive: true,
+            cooldownRemaining: Math.ceil(currentCooldownMs / 1000),
+            hasMinimumActivity: true,
+            activeField: field
+          };
+
+          onThresholdRef.current?.(triggerSnapshot);
+        }
+      } else if (cognitiveLoadScore < activeThreshold * 0.85) {
+        // Hysteresis: clear episode latch once score drops below 85% of threshold
+        t.hasFiredThresholdForEpisode = false;
+        isTriggered = false;
+      }
 
       const snapshot = {
         type: "telemetry",
         sessionId,
         timestamp: now,
         metrics,
+        normalizedMetrics,
+        rawScore,
         cognitiveLoadScore,
+        threshold: activeThreshold,
+        isTriggered,
+        isCooldownActive,
+        cooldownRemaining,
+        hasMinimumActivity,
         activeField: field
       };
 
       setTelemetrySnapshot({
         metrics,
+        normalizedMetrics,
+        rawScore,
         cognitiveLoadScore,
+        threshold: activeThreshold,
+        isTriggered,
+        isCooldownActive,
+        cooldownRemaining,
+        hasMinimumActivity,
         activeField: field
       });
 
@@ -283,22 +420,9 @@ export function useTelemetry({
         sendTelemetryRef.current(snapshot);
       }
 
-      // Trigger onThreshold callback when score >= threshold (with episode latch & cooldown)
-      if (cognitiveLoadScore >= thresholdRef.current) {
-        const withinCooldown = now - t.lastThresholdFireTime < cooldownMs;
-        if (!t.hasFiredThresholdForEpisode && !withinCooldown) {
-          t.hasFiredThresholdForEpisode = true;
-          t.lastThresholdFireTime = now;
-          onThresholdRef.current?.(snapshot);
-        }
-      } else if (cognitiveLoadScore < thresholdRef.current * 0.85) {
-        // Hysteresis: clear episode latch once score drops below 85% of threshold
-        t.hasFiredThresholdForEpisode = false;
-      }
-
       return snapshot;
     },
-    [sessionId, weights, smoothingAlpha, cooldownMs, computeCurrentMetrics]
+    [sessionId, weights, smoothingAlpha, computeCurrentMetrics]
   );
 
   // Setup DOM event listeners with 100ms mouse sampling
@@ -310,10 +434,13 @@ export function useTelemetry({
       const now = performance.now();
       const wallNow = Date.now();
 
+      t.hasUserInteracted = true;
+
       if (t.lastSampleTime === 0) {
         t.lastSampleTime = now;
         t.lastSampleX = e.clientX;
         t.lastSampleY = e.clientY;
+        t.totalInteractions += 1;
         return;
       }
 
@@ -329,6 +456,7 @@ export function useTelemetry({
 
       t.smoothedVelocity = t.smoothedVelocity * 0.7 + instantVelocity * 0.3;
       t.velocitySamples.push({ time: wallNow, velocity: instantVelocity });
+      t.totalInteractions += 1;
 
       // Direction changes detection for erratic movement
       if (distance > 8) {
@@ -352,13 +480,18 @@ export function useTelemetry({
     };
 
     const handleKeyDown = () => {
-      trackerRef.current.lastInteractionTime = Date.now();
-      trackerRef.current.manualOverrideScore = null;
+      const t = trackerRef.current;
+      t.hasUserInteracted = true;
+      t.totalInteractions += 1;
+      t.lastInteractionTime = Date.now();
+      t.manualOverrideScore = null;
     };
 
     const handleClick = (e) => {
       const t = trackerRef.current;
       const wallNow = Date.now();
+      t.hasUserInteracted = true;
+      t.totalInteractions += 1;
       t.lastInteractionTime = wallNow;
       t.manualOverrideScore = null;
 
@@ -415,11 +548,15 @@ export function useTelemetry({
   // Reset hesitation timer when field focus switches
   useEffect(() => {
     trackerRef.current.lastInteractionTime = Date.now();
+    if (activeField) {
+      trackerRef.current.hasUserInteracted = true;
+    }
   }, [activeField]);
 
   // Manual friction simulation helper for live demo testing
   const triggerSimulatedFriction = useCallback(
-    (field = "annualIncome", score = 88) => {
+    (field = "annualIncome", score = 88, options = {}) => {
+      const { force = false } = options;
       const simulatedMetrics = {
         mouseVelocity: 680,
         velocityVariance: 145000,
@@ -428,8 +565,16 @@ export function useTelemetry({
         clickErrorRate: 0.45,
         directionChanges: 14
       };
+
+      if (force) {
+        trackerRef.current.lastThresholdFireTime = 0;
+        trackerRef.current.hasFiredThresholdForEpisode = false;
+      }
+
+      trackerRef.current.hasUserInteracted = true;
       trackerRef.current.manualOverrideScore = score;
       trackerRef.current.smoothedScore = score;
+
       return emitSnapshot({
         activeField: field,
         metrics: simulatedMetrics,
@@ -448,6 +593,8 @@ export function useTelemetry({
       smoothedVelocity: 0,
       velocityVariance: 0,
       lastInteractionTime: Date.now(),
+      totalInteractions: 0,
+      hasUserInteracted: false,
       velocitySamples: [],
       directionEvents: [],
       clickEvents: [],
@@ -477,9 +624,16 @@ export function useTelemetry({
 
   return {
     metrics: telemetrySnapshot.metrics,
+    normalizedMetrics: telemetrySnapshot.normalizedMetrics,
     score,
-    activeField: telemetrySnapshot.activeField,
+    rawScore: telemetrySnapshot.rawScore,
+    threshold: thresholdRef.current,
     isFrustrated,
+    isTriggered: telemetrySnapshot.isTriggered,
+    isCooldownActive: telemetrySnapshot.isCooldownActive,
+    cooldownRemaining: telemetrySnapshot.cooldownRemaining,
+    hasMinimumActivity: telemetrySnapshot.hasMinimumActivity,
+    activeField: telemetrySnapshot.activeField,
     telemetrySnapshot,
     triggerSimulatedFriction,
     resetTelemetry

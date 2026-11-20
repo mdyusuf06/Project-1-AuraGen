@@ -7,14 +7,14 @@ import TelemetryHUD from "../components/TelemetryHUD";
 import FinancialForm from "../components/FinancialForm";
 import GeneratedCodeDrawer from "../components/GeneratedCodeDrawer";
 
-const THRESHOLD = Number(process.env.NEXT_PUBLIC_COGNITIVE_LOAD_THRESHOLD || 70);
+const DEFAULT_THRESHOLD = Number(process.env.NEXT_PUBLIC_COGNITIVE_LOAD_THRESHOLD || 70);
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080";
 
 export default function AuraGenDemoPage() {
   const [activeField, setActiveField] = useState("annualIncome");
   const [receivedComponents, setReceivedComponents] = useState([]);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [serverThreshold, setServerThreshold] = useState(THRESHOLD);
+  const [currentThreshold, setCurrentThreshold] = useState(DEFAULT_THRESHOLD);
 
   const sessionId = useMemo(() => {
     return `sess_${Math.random().toString(36).slice(2, 10)}`;
@@ -31,21 +31,30 @@ export default function AuraGenDemoPage() {
 
   const {
     metrics,
+    normalizedMetrics,
     score,
+    rawScore,
+    threshold,
     isFrustrated,
+    isTriggered,
+    isCooldownActive,
+    cooldownRemaining,
+    hasMinimumActivity,
     telemetrySnapshot,
     triggerSimulatedFriction,
     resetTelemetry
   } = useTelemetry({
     sessionId,
     activeField,
-    threshold: serverThreshold,
+    threshold: currentThreshold,
     streamIntervalMs: 1000,
+    cooldownMs: 60000,
+    minInteractions: 2,
     isConnected,
     sendTelemetry,
     onThreshold: (snapshot) => {
       console.log(
-        `[Telemetry] 🚨 Cognitive Load Threshold Exceeded (${snapshot.cognitiveLoadScore} >= ${serverThreshold}) at "${snapshot.activeField}". Telemetry snapshot streamed.`
+        `[Telemetry] 🚨 Cognitive Load Threshold Exceeded (${snapshot.cognitiveLoadScore} >= ${currentThreshold}) at "${snapshot.activeField}". Telemetry snapshot streamed.`
       );
     }
   });
@@ -56,7 +65,7 @@ export default function AuraGenDemoPage() {
       if (!msg || typeof msg !== "object") return;
 
       if (msg.type === "connected" && typeof msg.threshold === "number") {
-        setServerThreshold(msg.threshold);
+        setCurrentThreshold(msg.threshold);
       }
 
       if (msg.type === "component" && typeof msg.code === "string") {
@@ -83,7 +92,8 @@ export default function AuraGenDemoPage() {
         reconnectAttempt={reconnectAttempt}
         onReconnect={reconnect}
         telemetrySnapshot={telemetrySnapshot}
-        threshold={serverThreshold}
+        threshold={currentThreshold}
+        onThresholdChange={setCurrentThreshold}
         onSimulateSpike={() => triggerSimulatedFriction(activeField || "annualIncome", 88)}
         onResetTelemetry={resetTelemetry}
         receivedComponentCount={receivedComponents.length}
@@ -91,7 +101,7 @@ export default function AuraGenDemoPage() {
       />
 
       {latestComponent && (
-        <div className="mb-6 bg-indigo-50 border border-indigo-200 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
+        <div className="mb-6 bg-indigo-50 border border-indigo-200 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 shadow-sm">
           <div className="text-sm text-indigo-950">
             <strong className="font-semibold">
               AuraGen Self-Healing Payload Received!
@@ -123,4 +133,3 @@ export default function AuraGenDemoPage() {
     </main>
   );
 }
-
