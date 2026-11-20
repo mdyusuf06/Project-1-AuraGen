@@ -27,8 +27,15 @@ export default function ConversationalWizard({
   onUpdateValues,
   onRestoreOriginal,
   onSubmitWizard,
-  score = 75
+  score = 75,
+  simulateCrash = false
 }) {
+  const [internalSimulateCrash, setInternalSimulateCrash] = useState(false);
+
+  if (simulateCrash || internalSimulateCrash) {
+    throw new Error("Simulated rendering exception inside ConversationalWizard");
+  }
+
   // Tuple state: [currentStep, direction] (direction: 1 for forward, -1 for backward)
   const [[currentStep, direction], setStepState] = useState([1, 0]);
 
@@ -115,15 +122,28 @@ export default function ConversationalWizard({
           </p>
         </div>
 
-        {/* Back to Original Form Button */}
-        <button
-          type="button"
-          onClick={onRestoreOriginal}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 border border-slate-700 transition-all hover:border-slate-500 shadow-sm"
-          title="Return to the complete 21-field financial application"
-        >
-          <span>← Back to full form</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {process.env.NODE_ENV !== "production" && (
+            <button
+              type="button"
+              onClick={() => setInternalSimulateCrash(true)}
+              className="inline-flex items-center gap-1 px-2.5 py-2 rounded-xl bg-rose-950/80 hover:bg-rose-900 text-[11px] font-bold text-rose-300 border border-rose-800/80 transition-colors shadow-sm"
+              title="Dev Only: Trigger runtime rendering error to test Error Boundary"
+            >
+              <span>Simulate Error</span>
+            </button>
+          )}
+
+          {/* Back to Original Form Button */}
+          <button
+            type="button"
+            onClick={onRestoreOriginal}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 border border-slate-700 transition-all hover:border-slate-500 shadow-sm"
+            title="Return to the complete 21-field financial application"
+          >
+            <span>← Back to full form</span>
+          </button>
+        </div>
       </div>
 
       {/* Requirement 4: Smooth Stepper and StepProgress Animations */}

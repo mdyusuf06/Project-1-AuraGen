@@ -8,6 +8,7 @@ import FinancialForm from "../components/FinancialForm";
 import ConversationalWizard from "../components/ConversationalWizard";
 import SimplifyingOverlay from "../components/SimplifyingOverlay";
 import GeneratedCodeDrawer from "../components/GeneratedCodeDrawer";
+import { ErrorBoundary, WizardLoadingSkeleton } from "../fallback";
 import {
   AnimatePresence,
   motion,
@@ -26,12 +27,14 @@ export default function AuraGenDemoPage() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [currentThreshold, setCurrentThreshold] = useState(DEFAULT_THRESHOLD);
 
-  // UI Morphing State: "form" (original 21-field form) vs "wizard" (generated simplified assistant)
+  // UI Morphing & Loading State: "form" (original form) | "loading" (skeleton) | "wizard" (simplified assistant)
   const [viewMode, setViewMode] = useState("form");
   const [showSimplifyingOverlay, setShowSimplifyingOverlay] = useState(false);
   const [sharedFormValues, setSharedFormValues] = useState(() => createInitialFormValues());
+  const [wizardKey, setWizardKey] = useState(0);
 
   const overlayTimerRef = useRef(null);
+  const loadingTimerRef = useRef(null);
 
   const sessionId = useMemo(() => {
     return `sess_${Math.random().toString(36).slice(2, 10)}`;
@@ -57,12 +60,20 @@ export default function AuraGenDemoPage() {
     if (overlayTimerRef.current) {
       clearTimeout(overlayTimerRef.current);
     }
+    if (loadingTimerRef.current) {
+      clearTimeout(loadingTimerRef.current);
+    }
 
-    // Keep overlay visible for 1.3s then smoothly morph into conversational wizard
+    // Keep overlay visible for 1.2s then transition to graceful loading skeleton
     overlayTimerRef.current = setTimeout(() => {
-      setViewMode("wizard");
       setShowSimplifyingOverlay(false);
-    }, 1300);
+      setViewMode("loading");
+
+      // Skeleton preparation window (1.2s), then reveal wizard
+      loadingTimerRef.current = setTimeout(() => {
+        setViewMode("wizard");
+      }, 1200);
+    }, 1200);
   };
 
   const {
@@ -97,12 +108,11 @@ export default function AuraGenDemoPage() {
     onThreshold: handleTelemetryTrigger
   });
 
-  // Clean up timer on unmount
+  // Clean up timers on unmount
   useEffect(() => {
     return () => {
-      if (overlayTimerRef.current) {
-        clearTimeout(overlayTimerRef.current);
-      }
+      if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
+      if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
     };
   }, []);
 
@@ -130,9 +140,8 @@ export default function AuraGenDemoPage() {
   }, [onMessage]);
 
   const handleManualReset = () => {
-    if (overlayTimerRef.current) {
-      clearTimeout(overlayTimerRef.current);
-    }
+    if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
+    if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
     setShowSimplifyingOverlay(false);
     setViewMode("form");
     resetTelemetry();
@@ -169,7 +178,8 @@ export default function AuraGenDemoPage() {
             activeField={activeField}
             onDismiss={() => {
               setShowSimplifyingOverlay(false);
-              setViewMode("wizard");
+              setViewMode("loading");
+              setTimeout(() => setViewMode("wizard"), 1000);
             }}
           />
         )}
@@ -191,7 +201,11 @@ export default function AuraGenDemoPage() {
                 AuraGen Self-Healing Payload Received!
               </strong>{" "}
               <span className="text-indigo-800">
-                Backend code-gen generated a conversational assistant for <code className="font-mono text-xs bg-indigo-100 px-1.5 py-0.5 rounded font-bold">{activeField}</code>.
+                Backend code-gen generated a conversational assistant for{" "}
+                <code className="font-mono text-xs bg-indigo-100 px-1.5 py-0.5 rounded font-bold">
+                  {activeField}
+                </code>
+                .
               </span>
             </div>
             <button
@@ -206,12 +220,13 @@ export default function AuraGenDemoPage() {
       </AnimatePresence>
 
       {/*
-        Requirements 3, 4, 5, 6, 7, 8, 9:
+        Requirements 3, 4, 5, 6, 7, 8, 9 & Fallback UI:
         - Reserved min-height container (min-h-[620px]) to prevent layout jumps
         - AnimatePresence mode="wait" for non-overlapping transitions
         - Original form fades out and scales down (350ms, within 300-400ms)
-        - Wizard fades in and slides into view with a fluid spring animation
-        - Shared layout transition via layoutId="auragen-form-card"
+        - Loading skeleton displayed while component is prepared ("Preparing your simplified form...")
+        - Reusable ErrorBoundary wrapping the conversational wizard
+        - Clean Retry and Return to Original Form fallback recovery actions
         - Zero page refresh
       */}
       <div className="relative min-h-[620px]">
@@ -233,6 +248,23 @@ export default function AuraGenDemoPage() {
                 onFormValuesChange={setSharedFormValues}
               />
             </motion.div>
+          ) : viewMode === "loading" ? (
+            <motion.div
+              key="wizard-loading-skeleton"
+              layoutId="auragen-form-card"
+              variants={wizardMorphVariant}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              layout="position"
+              className="w-full"
+            >
+              <WizardLoadingSkeleton
+                activeField={activeField}
+                loadingMessage="Preparing your simplified form..."
+                onCancel={() => setViewMode("form")}
+              />
+            </motion.div>
           ) : (
             <motion.div
               key="simplified-conversational-wizard"
@@ -244,13 +276,23 @@ export default function AuraGenDemoPage() {
               layout="position"
               className="w-full"
             >
-              <ConversationalWizard
-                activeField={activeField}
-                initialValues={sharedFormValues}
-                onUpdateValues={(vals) => setSharedFormValues((prev) => ({ ...prev, ...vals }))}
+              <ErrorBoundary
+                key={wizardKey}
                 onRestoreOriginal={() => setViewMode("form")}
-                score={score}
-              />
+                onRetry={() => {
+                  setWizardKey((prev) => prev + 1);
+                  setViewMode("loading");
+                  setTimeout(() => setViewMode("wizard"), 900);
+                }}
+              >
+                <ConversationalWizard
+                  activeField={activeField}
+                  initialValues={sharedFormValues}
+                  onUpdateValues={(vals) => setSharedFormValues((prev) => ({ ...prev, ...vals }))}
+                  onRestoreOriginal={() => setViewMode("form")}
+                  score={score}
+                />
+              </ErrorBoundary>
             </motion.div>
           )}
         </AnimatePresence>
