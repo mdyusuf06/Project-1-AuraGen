@@ -9,12 +9,63 @@ import {
   validateAllFields
 } from "../data/financialFormSchema";
 
+/**
+ * Actively serializes the user's current form inputs and DOM context into a formStateSnapshot object.
+ * Complies strictly with the backend Zod FormStateSnapshotSchema for Week 3 Contextual Awareness.
+ *
+ * @param {Object} values - Key-value map of form input values.
+ * @param {Object} [meta={}] - Active field, focused element, errors, and layout metadata.
+ * @returns {Object} JSON-serializable formStateSnapshot payload.
+ */
+export function serializeFormStateSnapshot(values = {}, meta = {}) {
+  const cleanValues = {};
+
+  for (const field of ALL_FORM_FIELDS) {
+    const rawVal = values[field.name];
+    cleanValues[field.name] = rawVal !== undefined && rawVal !== null ? rawVal : "";
+  }
+
+  // Include any extra dynamic or customized fields
+  for (const [key, val] of Object.entries(values)) {
+    if (!(key in cleanValues) && val !== undefined) {
+      cleanValues[key] = val !== null ? val : "";
+    }
+  }
+
+  const completedFields = Object.keys(cleanValues).filter(
+    (k) => cleanValues[k] !== "" && cleanValues[k] !== null && cleanValues[k] !== undefined
+  );
+
+  return {
+    capturedAt: Date.now(),
+    values: cleanValues,
+    completedFields,
+    completedCount: completedFields.length,
+    totalFieldsCount: ALL_FORM_FIELDS.length,
+    domContext: {
+      activeFieldId: meta.activeFieldId || meta.activeField || "",
+      activeFieldLabel: meta.activeFieldLabel || meta.activeField || "",
+      activeSectionId: meta.activeSectionId || "",
+      focusedFieldId: meta.focusedFieldId || null,
+      hoveredFieldId: meta.hoveredFieldId || null,
+      completedFieldsCount: completedFields.length,
+      totalFieldsCount: ALL_FORM_FIELDS.length,
+      validationErrors: meta.errors ? { ...meta.errors } : {},
+      scrollY: typeof window !== "undefined" ? Math.round(window.scrollY || 0) : 0
+    }
+  };
+}
+
 export default function FinancialForm({
   activeField,
   onActiveFieldChange,
-  onFormContextChange
+  onFormContextChange,
+  initialValues = {}
 }) {
-  const [values, setValues] = useState(() => createInitialFormValues());
+  const [values, setValues] = useState(() => ({
+    ...createInitialFormValues(),
+    ...(initialValues || {})
+  }));
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState({});
   const [submittedData, setSubmittedData] = useState(null);
@@ -48,8 +99,15 @@ export default function FinancialForm({
         };
   }, [activeField]);
 
-  // Keep parent telemetry hook synchronized with latest form values & DOM context
+  // Keep parent telemetry hook synchronized with serialized formStateSnapshot & DOM context
   useEffect(() => {
+    const snapshot = serializeFormStateSnapshot(values, {
+      ...activeFieldMeta,
+      focusedFieldId,
+      hoveredFieldId,
+      errors
+    });
+
     onFormContextChange?.({
       values,
       errors,
@@ -57,6 +115,7 @@ export default function FinancialForm({
       completedFieldsCount: completedCount,
       hoveredFieldId,
       focusedFieldId,
+      formStateSnapshot: snapshot,
       ...activeFieldMeta
     });
   }, [
