@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 
 const STATUS_BADGE = {
   connected: {
@@ -30,6 +30,12 @@ export default function TelemetryHUD({
   reconnectAttempt,
   onReconnect,
   telemetrySnapshot,
+  telemetryHistory = [],
+  simulationMode = "idle",
+  onSimulateConfused,
+  onSimulateCalm,
+  onStopSimulation,
+  onExportCSV,
   threshold = 70,
   onThresholdChange,
   onSimulateSpike,
@@ -37,7 +43,9 @@ export default function TelemetryHUD({
   receivedComponentCount,
   onOpenCodeDrawer
 }) {
+  const isDevelopment = process.env.NODE_ENV !== "production";
   const badge = STATUS_BADGE[wsStatus] || STATUS_BADGE.disconnected;
+
   const {
     metrics = {},
     normalizedMetrics = {},
@@ -50,7 +58,7 @@ export default function TelemetryHUD({
     hasMinimumActivity = false
   } = telemetrySnapshot || {};
 
-  const isHighLoad = cognitiveLoadScore >= threshold;
+  const isThresholdReached = cognitiveLoadScore >= threshold;
 
   // Velocity variance standard deviation
   const velocityVariance = metrics.velocityVariance ?? 0;
@@ -63,13 +71,48 @@ export default function TelemetryHUD({
   const normClickErrors = normalizedMetrics.clickErrorRate ?? 0;
   const normDirection = normalizedMetrics.directionChanges ?? 0;
 
+  // Build SVG Sparkline chart path for Cognitive Load Score over time
+  const sparklineData = useMemo(() => {
+    if (!telemetryHistory || telemetryHistory.length === 0) {
+      return { path: "", area: "", points: [], thresholdY: 60 };
+    }
+
+    const width = 320;
+    const height = 75;
+    const padding = 6;
+    const innerWidth = width - padding * 2;
+    const innerHeight = height - padding * 2;
+
+    const points = telemetryHistory.map((item, idx) => {
+      const x =
+        padding +
+        (idx / Math.max(1, telemetryHistory.length - 1)) * innerWidth;
+      const score = Math.max(0, Math.min(100, item.score ?? 0));
+      const y = padding + innerHeight - (score / 100) * innerHeight;
+      return { x, y, score };
+    });
+
+    const thresholdY = padding + innerHeight - (threshold / 100) * innerHeight;
+
+    const path = points.reduce((acc, pt, idx) => {
+      return idx === 0 ? `M ${pt.x} ${pt.y}` : `${acc} L ${pt.x} ${pt.y}`;
+    }, "");
+
+    const firstX = points[0]?.x ?? padding;
+    const lastX = points[points.length - 1]?.x ?? width - padding;
+    const bottomY = height - padding;
+    const area = `${path} L ${lastX} ${bottomY} L ${firstX} ${bottomY} Z`;
+
+    return { path, area, points, thresholdY, width, height };
+  }, [telemetryHistory, threshold]);
+
   return (
     <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950/90 text-slate-100 rounded-3xl border border-indigo-500/25 shadow-2xl p-5 sm:p-6 mb-8 backdrop-blur-xl transition-all">
       {/* Ambient background glows */}
       <div className="absolute -top-28 -left-28 w-80 h-80 bg-indigo-500/15 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-28 -right-28 w-80 h-80 bg-rose-500/15 rounded-full blur-3xl pointer-events-none" />
 
-      {/* Top Header: Identity, Status Badges, Indicators */}
+      {/* Top Header: Identity, Status Badges, Threshold Indicator */}
       <div className="relative flex flex-wrap items-center justify-between gap-4 pb-5 border-b border-slate-800/80">
         <div className="flex items-center space-x-3.5">
           <div className="h-11 w-11 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-500 border border-indigo-400/40 flex items-center justify-center text-white font-extrabold text-base shadow-lg shadow-indigo-500/30">
@@ -84,17 +127,23 @@ export default function TelemetryHUD({
                 </span>
               </h2>
 
-              {isHighLoad && (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-rose-500/20 text-rose-300 border border-rose-500/60 shadow-[0_0_12px_rgba(244,63,94,0.4)] animate-pulse">
+              {/* Requirement 7: Show whether confusion threshold has been reached */}
+              {isThresholdReached ? (
+                <span className="inline-flex items-center px-3 py-0.5 rounded-full text-[11px] font-extrabold bg-rose-500/20 text-rose-300 border border-rose-500/60 shadow-[0_0_14px_rgba(244,63,94,0.5)] animate-pulse">
                   <span className="w-1.5 h-1.5 rounded-full bg-rose-400 mr-1.5 animate-ping" />
-                  FRUSTRATION DETECTED
+                  THRESHOLD REACHED (CONFUSED)
+                </span>
+              ) : (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-950/60 text-emerald-400 border border-emerald-500/30">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5" />
+                  THRESHOLD NOT REACHED (NORMAL)
                 </span>
               )}
             </div>
             <p className="text-xs text-slate-400 mt-0.5 flex flex-wrap items-center gap-2">
-              <span>Normalized 0–100 weighted metrics</span>
+              <span>Streaming real-time 10s rolling telemetry</span>
               <span className="text-slate-600">•</span>
-              <span>10s rolling window</span>
+              <span>Dev Simulator Ready</span>
               <span className="text-slate-600">•</span>
               <span className="text-indigo-400 font-medium">Auto-Healing Pipeline</span>
             </p>
@@ -171,9 +220,9 @@ export default function TelemetryHUD({
         </div>
       </div>
 
-      {/* Main Telemetry Cockpit */}
+      {/* Main Telemetry Cockpit Grid */}
       <div className="relative grid grid-cols-1 lg:grid-cols-12 gap-5 pt-5 items-center">
-        {/* Progress Bar & Cognitive Load Score Gauge */}
+        {/* Requirement 6: Display Cognitive Load Score in real time with gauge */}
         <div className="lg:col-span-4 bg-slate-900/70 p-4 rounded-2xl border border-slate-800/90 backdrop-blur-sm space-y-3">
           <div className="flex items-center justify-between text-xs">
             <div>
@@ -189,7 +238,7 @@ export default function TelemetryHUD({
             <div className="text-right">
               <span
                 className={`font-black text-2xl tracking-tight transition-colors duration-300 ${
-                  isHighLoad
+                  isThresholdReached
                     ? "text-rose-400 drop-shadow-[0_0_10px_rgba(244,63,94,0.6)]"
                     : cognitiveLoadScore > threshold * 0.6
                     ? "text-amber-400"
@@ -206,7 +255,7 @@ export default function TelemetryHUD({
           <div className="relative w-full h-3.5 bg-slate-800/90 rounded-full overflow-hidden p-0.5 border border-slate-700/60 shadow-inner">
             <div
               className={`h-full rounded-full transition-all duration-500 ease-out ${
-                isHighLoad
+                isThresholdReached
                   ? "bg-gradient-to-r from-amber-500 to-rose-500 shadow-[0_0_12px_rgba(244,63,94,0.8)]"
                   : cognitiveLoadScore > threshold * 0.6
                   ? "bg-gradient-to-r from-emerald-500 to-amber-500"
@@ -214,7 +263,6 @@ export default function TelemetryHUD({
               }`}
               style={{ width: `${Math.min(100, cognitiveLoadScore)}%` }}
             />
-            {/* Threshold target marker line */}
             <div
               className="absolute top-0 bottom-0 w-1 bg-white shadow-[0_0_6px_rgba(255,255,255,0.95)] rounded-full z-10"
               style={{ left: `${Math.min(100, Math.max(0, threshold))}%` }}
@@ -259,7 +307,7 @@ export default function TelemetryHUD({
         </div>
 
         {/* 5-Metric Normalized Cockpit Cards: Variance, Hesitation, Rage Clicks, Click Errors, Direction */}
-        <div className="lg:col-span-5 grid grid-cols-3 sm:grid-cols-5 gap-2 text-center">
+        <div className="lg:col-span-4 grid grid-cols-3 sm:grid-cols-5 gap-2 text-center">
           {/* Card 1: Velocity Variance (25% weight) */}
           <div className="bg-slate-900/80 hover:bg-slate-800/80 rounded-2xl p-2 border border-slate-800 transition-all hover:border-indigo-500/40 group flex flex-col justify-between">
             <div>
@@ -274,7 +322,6 @@ export default function TelemetryHUD({
                 {normVariance}% norm
               </div>
             </div>
-            {/* Normalized progress bar */}
             <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-1.5">
               <div
                 className="h-full bg-indigo-500 rounded-full transition-all duration-300"
@@ -376,24 +423,191 @@ export default function TelemetryHUD({
           </div>
         </div>
 
-        {/* Manual Test Controls */}
-        <div className="lg:col-span-3 flex flex-col sm:flex-row lg:flex-col gap-2">
+        {/* Real-time Telemetry Timeline Chart */}
+        <div className="lg:col-span-4 bg-slate-900/70 p-3 rounded-2xl border border-slate-800/90 backdrop-blur-sm flex flex-col justify-between h-full">
+          <div className="flex items-center justify-between text-xs pb-1 border-b border-slate-800/60">
+            <span className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
+              Live Cognitive Load Timeline
+            </span>
+            <span className="text-[10px] text-slate-400">
+              {telemetryHistory.length} sec buffer
+            </span>
+          </div>
+
+          {/* SVG Sparkline Area Chart */}
+          <div className="relative w-full h-[68px] my-1 flex items-center justify-center overflow-hidden">
+            {sparklineData.points.length > 1 ? (
+              <svg
+                viewBox={`0 0 ${sparklineData.width || 320} ${sparklineData.height || 75}`}
+                className="w-full h-full overflow-visible"
+                preserveAspectRatio="none"
+              >
+                <defs>
+                  <linearGradient id="scoreGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop
+                      offset="0%"
+                      stopColor={isThresholdReached ? "#f43f5e" : "#6366f1"}
+                      stopOpacity="0.4"
+                    />
+                    <stop
+                      offset="100%"
+                      stopColor={isThresholdReached ? "#f43f5e" : "#6366f1"}
+                      stopOpacity="0.0"
+                    />
+                  </linearGradient>
+                </defs>
+
+                {/* Threshold line */}
+                <line
+                  x1="0"
+                  y1={sparklineData.thresholdY}
+                  x2={sparklineData.width || 320}
+                  y2={sparklineData.thresholdY}
+                  stroke="#fb7185"
+                  strokeWidth="1.5"
+                  strokeDasharray="4 3"
+                  opacity="0.8"
+                />
+
+                {/* Area fill */}
+                <path d={sparklineData.area} fill="url(#scoreGradient)" />
+
+                {/* Line stroke */}
+                <path
+                  d={sparklineData.path}
+                  fill="none"
+                  stroke={isThresholdReached ? "#f43f5e" : "#818cf8"}
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+
+                {/* Latest point dot */}
+                {sparklineData.points.length > 0 && (
+                  <circle
+                    cx={sparklineData.points[sparklineData.points.length - 1].x}
+                    cy={sparklineData.points[sparklineData.points.length - 1].y}
+                    r="4"
+                    fill={isThresholdReached ? "#f43f5e" : "#a5b4fc"}
+                    className="drop-shadow-[0_0_6px_rgba(244,63,94,0.8)]"
+                  />
+                )}
+              </svg>
+            ) : (
+              <div className="text-[11px] text-slate-500 flex items-center justify-center h-full">
+                Sampling real-time telemetry stream...
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-800/60">
+            <span className="text-rose-400/90 font-medium">--- Threshold ({threshold})</span>
+            {onExportCSV && (
+              <button
+                type="button"
+                onClick={onExportCSV}
+                className="text-[10px] text-indigo-400 hover:text-indigo-300 font-semibold underline underline-offset-2 transition-colors"
+                title="Download full telemetry time-series as CSV"
+              >
+                Export CSV Report
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Requirement 5 & 9: Development-Only Confusion Simulator Controls */}
+      <div className="relative mt-5 pt-4 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+            <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30">
+              Dev Only
+            </span>
+            Telemetry Simulator:
+          </span>
+          {simulationMode !== "idle" && (
+            <span
+              className={`text-[11px] font-bold px-2 py-0.5 rounded-full border animate-pulse ${
+                simulationMode === "confused"
+                  ? "bg-rose-950 text-rose-300 border-rose-500/50"
+                  : "bg-emerald-950 text-emerald-300 border-emerald-500/50"
+              }`}
+            >
+              Simulating: {simulationMode.toUpperCase()}
+            </span>
+          )}
+          {!isDevelopment && (
+            <span className="text-[10px] text-slate-500 italic">
+              (Controls disabled in production)
+            </span>
+          )}
+        </div>
+
+        {/* Action Button Controls */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Button 1: Simulate Confused User */}
+          <button
+            type="button"
+            disabled={!isDevelopment}
+            onClick={onSimulateConfused}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-md ${
+              !isDevelopment
+                ? "bg-slate-800 text-slate-500 border border-slate-700/50 cursor-not-allowed opacity-50"
+                : simulationMode === "confused"
+                ? "bg-rose-600 text-white shadow-rose-600/40 ring-2 ring-rose-400 animate-pulse"
+                : "bg-gradient-to-r from-rose-600 via-rose-500 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white shadow-rose-600/20 hover:scale-[1.02] active:scale-[0.98]"
+            }`}
+          >
+            Simulate Confused User
+          </button>
+
+          {/* Button 2: Simulate Calm User */}
+          <button
+            type="button"
+            disabled={!isDevelopment}
+            onClick={onSimulateCalm}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-md ${
+              !isDevelopment
+                ? "bg-slate-800 text-slate-500 border border-slate-700/50 cursor-not-allowed opacity-50"
+                : simulationMode === "calm"
+                ? "bg-emerald-600 text-white shadow-emerald-600/40 ring-2 ring-emerald-400 animate-pulse"
+                : "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-600/20 hover:scale-[1.02] active:scale-[0.98]"
+            }`}
+          >
+            Simulate Calm User
+          </button>
+
+          {/* Button 3: Stop Simulation */}
+          <button
+            type="button"
+            disabled={!isDevelopment}
+            onClick={onStopSimulation}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+              !isDevelopment
+                ? "bg-slate-800 text-slate-500 border border-slate-700/50 cursor-not-allowed opacity-50"
+                : simulationMode !== "idle"
+                ? "bg-amber-600 hover:bg-amber-500 text-white shadow-amber-600/30"
+                : "bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
+            }`}
+          >
+            Stop Simulation
+          </button>
+
+          {/* Quick Friction Spike & Reset */}
           <button
             type="button"
             onClick={onSimulateSpike}
-            className="w-full px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 via-rose-500 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-xs font-bold text-white shadow-lg shadow-rose-600/30 transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-1.5"
+            className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 border border-slate-700/80 transition-all hover:text-white"
           >
-            <span>Simulate Friction Spike</span>
-            {isCooldownActive && (
-              <span className="text-[10px] font-normal opacity-80">({cooldownRemaining}s)</span>
-            )}
+            1-Click Spike
           </button>
           <button
             type="button"
             onClick={onResetTelemetry}
-            className="w-full px-4 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700/90 text-xs font-semibold text-slate-300 border border-slate-700/80 transition-all hover:border-slate-600 flex items-center justify-center"
+            className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-400 border border-slate-700/80 transition-all hover:text-slate-200"
           >
-            Reset Telemetry & Cooldown
+            Reset
           </button>
         </div>
       </div>

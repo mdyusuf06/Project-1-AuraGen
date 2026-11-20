@@ -41,6 +41,12 @@ export default function AuraGenDemoPage() {
     cooldownRemaining,
     hasMinimumActivity,
     telemetrySnapshot,
+    telemetryHistory,
+    simulationMode,
+    startConfusionSimulation,
+    startCalmSimulation,
+    stopSimulation,
+    exportTelemetryCSV,
     triggerSimulatedFriction,
     resetTelemetry
   } = useTelemetry({
@@ -92,6 +98,12 @@ export default function AuraGenDemoPage() {
         reconnectAttempt={reconnectAttempt}
         onReconnect={reconnect}
         telemetrySnapshot={telemetrySnapshot}
+        telemetryHistory={telemetryHistory}
+        simulationMode={simulationMode}
+        onSimulateConfused={startConfusionSimulation}
+        onSimulateCalm={startCalmSimulation}
+        onStopSimulation={stopSimulation}
+        onExportCSV={exportTelemetryCSV}
         threshold={currentThreshold}
         onThresholdChange={setCurrentThreshold}
         onSimulateSpike={() => triggerSimulatedFriction(activeField || "annualIncome", 88)}

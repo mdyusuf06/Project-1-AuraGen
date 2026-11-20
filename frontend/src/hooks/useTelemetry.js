@@ -1,6 +1,20 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import {
+  simulateConfusion as runSimulateConfusion,
+  simulateCalmUser as runSimulateCalmUser,
+  generateTelemetryReportCSV,
+  downloadCSVReport
+} from "../utils/telemetrySimulator.js";
+
+// Re-export simulation utilities for external access
+export {
+  runSimulateConfusion as simulateConfusion,
+  runSimulateCalmUser as simulateCalmUser,
+  generateTelemetryReportCSV,
+  downloadCSVReport
+};
 
 function clamp(val, min, max) {
   return Math.max(min, Math.min(max, val));
@@ -142,7 +156,9 @@ export function applyExponentialSmoothing(prevScore, rawScore, alpha = 0.65) {
  * - 60-second cooldown after a trigger episode, preventing repeated generation calls
  * - onThreshold callback invoked when score crosses threshold
  * - 1000ms WebSocket streaming cadence
- * - Clean listener and timer teardown
+ * - Development-only confusion & calm simulation suite
+ * - Real-time telemetry history and CSV report generator
+ * - Clean listener and simulation timer teardown
  */
 export function useTelemetry({
   sessionId,
@@ -151,9 +167,9 @@ export function useTelemetry({
   weights = DEFAULT_WEIGHTS,
   streamIntervalMs = 1000,
   windowDurationMs = 10000,
-  smoothingAlpha = 0.65, // Exponential smoothing coefficient
-  cooldownMs = 60000,   // 60-second cooldown after generation trigger (default 60s)
-  minInteractions = 2,  // Minimum activity requirement before calculating / triggering
+  smoothingAlpha = 0.65,
+  cooldownMs = 60000,
+  minInteractions = 2,
   isConnected = false,
   sendTelemetry,
   onThreshold
@@ -184,6 +200,9 @@ export function useTelemetry({
     hasMinimumActivity: false
   });
 
+  const [simulationMode, setSimulationMode] = useState("idle"); // "idle" | "confused" | "calm"
+  const [telemetryHistory, setTelemetryHistory] = useState([]);
+
   const activeFieldRef = useRef(activeField || "");
   activeFieldRef.current = activeField || "";
 
@@ -205,6 +224,11 @@ export function useTelemetry({
   const minInteractionsRef = useRef(minInteractions);
   minInteractionsRef.current = minInteractions;
 
+  const simulationModeRef = useRef("idle");
+  simulationModeRef.current = simulationMode;
+
+  const activeSimulationRef = useRef(null);
+
   // Tracker state holding rolling window buffers
   const trackerRef = useRef({
     lastSampleX: null,
@@ -214,7 +238,7 @@ export function useTelemetry({
     smoothedVelocity: 0,
     velocityVariance: 0,
     lastInteractionTime: Date.now(),
-    totalInteractions: 0, // Counts user interactions to enforce minimum activity requirement
+    totalInteractions: 0,
     hasUserInteracted: false,
     // Rolling 10s Window Buffers: { time, ... }
     velocitySamples: [],
@@ -297,11 +321,11 @@ export function useTelemetry({
       const now = Date.now();
       const t = trackerRef.current;
 
-      // Minimum activity requirement check:
-      // Prevents cold-start false positives before the user has actually engaged with the form.
+      // Minimum activity requirement check
       const hasMinimumActivity =
         t.manualOverrideScore !== null ||
         overridePayload?.cognitiveLoadScore !== undefined ||
+        simulationModeRef.current !== "idle" ||
         t.totalInteractions >= minInteractionsRef.current ||
         t.velocitySamples.length >= minInteractionsRef.current ||
         t.clickEvents.length >= 1;
@@ -349,11 +373,7 @@ export function useTelemetry({
       const field = overridePayload?.activeField ?? activeFieldRef.current;
       const activeThreshold = thresholdRef.current;
 
-      // Trigger condition:
-      // 1. Score >= threshold
-      // 2. Minimum activity requirement met
-      // 3. Not in cooldown (prevents repeated generation requests within 60s)
-      // 4. Not already fired for the current high-friction episode (episode latch)
+      // Trigger condition
       let isTriggered = t.hasFiredThresholdForEpisode;
 
       if (cognitiveLoadScore >= activeThreshold) {
@@ -381,7 +401,7 @@ export function useTelemetry({
           onThresholdRef.current?.(triggerSnapshot);
         }
       } else if (cognitiveLoadScore < activeThreshold * 0.85) {
-        // Hysteresis: clear episode latch once score drops below 85% of threshold
+        // Hysteresis
         t.hasFiredThresholdForEpisode = false;
         isTriggered = false;
       }
@@ -402,17 +422,27 @@ export function useTelemetry({
         activeField: field
       };
 
-      setTelemetrySnapshot({
-        metrics,
-        normalizedMetrics,
-        rawScore,
-        cognitiveLoadScore,
-        threshold: activeThreshold,
-        isTriggered,
-        isCooldownActive,
-        cooldownRemaining,
-        hasMinimumActivity,
-        activeField: field
+      setTelemetrySnapshot(snapshot);
+
+      // Record to time-series history (keeping last 40 data points for live chart & CSV)
+      setTelemetryHistory((prev) => {
+        const timeSec = prev.length > 0 ? (prev[prev.length - 1].timeSeconds || 0) + 1 : 0;
+        const historyItem = {
+          timestamp: new Date(now).toISOString(),
+          timeSeconds: timeSec,
+          score: cognitiveLoadScore,
+          rawScore,
+          threshold: activeThreshold,
+          isThresholdReached: cognitiveLoadScore >= activeThreshold,
+          velocityVariance: metrics.velocityVariance,
+          hesitationMs: metrics.hesitationMs,
+          rageClicks: metrics.rageClicks,
+          clickErrorRate: metrics.clickErrorRate,
+          directionChanges: metrics.directionChanges,
+          mode: simulationModeRef.current
+        };
+        const next = [...prev, historyItem];
+        return next.length > 40 ? next.slice(-40) : next;
       });
 
       // Stream to WebSocket
@@ -445,7 +475,6 @@ export function useTelemetry({
       }
 
       const elapsed = now - t.lastSampleTime;
-      // Sample mouse movement every ~100ms to keep performance smooth
       if (elapsed < 100) return;
 
       const dx = e.clientX - t.lastSampleX;
@@ -466,7 +495,6 @@ export function useTelemetry({
           if (angleDiff > Math.PI) {
             angleDiff = 2 * Math.PI - angleDiff;
           }
-          // Deflection > 45 degrees signifies erratic direction change
           if (angleDiff > Math.PI / 4) {
             t.directionEvents.push({ time: wallNow });
           }
@@ -495,7 +523,6 @@ export function useTelemetry({
       t.lastInteractionTime = wallNow;
       t.manualOverrideScore = null;
 
-      // Identify click target and validation status
       const tag = e.target?.tagName?.toLowerCase() || "";
       const isInteractive = [
         "input",
@@ -521,7 +548,6 @@ export function useTelemetry({
 
       if (recentClicksInArea.length >= 3) {
         t.rageClickIncidents.push({ time: wallNow });
-        // Emit immediately on rage click spike
         emitSnapshot();
       }
     };
@@ -532,7 +558,6 @@ export function useTelemetry({
 
     // Stream telemetry every second (1000ms)
     const intervalId = setInterval(() => {
-      // Natural decay for idle velocity
       trackerRef.current.smoothedVelocity *= 0.6;
       emitSnapshot();
     }, streamIntervalMs);
@@ -553,7 +578,138 @@ export function useTelemetry({
     }
   }, [activeField]);
 
-  // Manual friction simulation helper for live demo testing
+  // Clean up active simulation on unmount
+  useEffect(() => {
+    return () => {
+      if (activeSimulationRef.current) {
+        activeSimulationRef.current.stop();
+        activeSimulationRef.current = null;
+      }
+    };
+  }, []);
+
+  /**
+   * Stop any active simulation and restore idle state.
+   */
+  const stopSimulation = useCallback(() => {
+    if (activeSimulationRef.current) {
+      activeSimulationRef.current.stop();
+      activeSimulationRef.current = null;
+    }
+    setSimulationMode("idle");
+    simulationModeRef.current = "idle";
+    trackerRef.current.manualOverrideScore = null;
+  }, []);
+
+  /**
+   * Starts the confused user simulation:
+   * Drives erratic mouse movements, pauses, rage clicks, and misclicks.
+   * Produces a clear score spike breaching the 70 threshold.
+   */
+  const startConfusionSimulation = useCallback(() => {
+    stopSimulation();
+    setSimulationMode("confused");
+    simulationModeRef.current = "confused";
+    trackerRef.current.hasUserInteracted = true;
+
+    // Reset cooldown to allow live demo demonstration of trigger
+    trackerRef.current.lastThresholdFireTime = 0;
+    trackerRef.current.hasFiredThresholdForEpisode = false;
+
+    let tickCount = 0;
+    const simInterval = setInterval(() => {
+      tickCount += 1;
+      const now = Date.now();
+      const t = trackerRef.current;
+
+      // Progressive friction stages:
+      // Stage 1 (0-2s): Jittery erratic velocity variance
+      // Stage 2 (2-5s): Long hesitation pause
+      // Stage 3 (5-8s): Burst of rage clicks + misclicks
+      // Stage 4 (8s+): High combined friction peaking >= 75
+      const burstVelocity = 500 + Math.random() * 600;
+      t.smoothedVelocity = burstVelocity;
+      t.velocitySamples.push({ time: now, velocity: burstVelocity });
+
+      // Add direction events (erratic deflections)
+      if (tickCount % 2 === 0) {
+        t.directionEvents.push({ time: now });
+        t.directionEvents.push({ time: now });
+      }
+
+      // Hesitation pause
+      if (tickCount >= 3) {
+        t.lastInteractionTime = now - Math.min(8500, tickCount * 1200);
+      }
+
+      // Rage clicks
+      if (tickCount >= 5) {
+        t.clickEvents.push({ time: now, x: 300, y: 300, isError: true });
+        t.clickEvents.push({ time: now - 100, x: 305, y: 302, isError: true });
+        t.clickEvents.push({ time: now - 200, x: 302, y: 304, isError: true });
+        t.rageClickIncidents.push({ time: now });
+      }
+
+      emitSnapshot();
+    }, 700);
+
+    activeSimulationRef.current = {
+      stop: () => {
+        clearInterval(simInterval);
+      }
+    };
+  }, [stopSimulation, emitSnapshot]);
+
+  /**
+   * Starts the calm user simulation:
+   * Drives smooth, steady movements, clean clicks, and minimal hesitation.
+   * Maintains a low Cognitive Load Score (< 25).
+   */
+  const startCalmSimulation = useCallback(() => {
+    stopSimulation();
+    setSimulationMode("calm");
+    simulationModeRef.current = "calm";
+    trackerRef.current.hasUserInteracted = true;
+
+    // Clear erratic buffers
+    trackerRef.current.velocitySamples = [];
+    trackerRef.current.directionEvents = [];
+    trackerRef.current.clickEvents = [];
+    trackerRef.current.rageClickIncidents = [];
+    trackerRef.current.lastInteractionTime = Date.now();
+
+    let tickCount = 0;
+    const simInterval = setInterval(() => {
+      tickCount += 1;
+      const now = Date.now();
+      const t = trackerRef.current;
+
+      // Steady gentle velocity (near-zero variance)
+      const steadyVelocity = 180 + (Math.sin(tickCount) * 20);
+      t.smoothedVelocity = steadyVelocity;
+      t.velocitySamples.push({ time: now, velocity: steadyVelocity });
+
+      // Keep hesitation low (< 1000ms)
+      t.lastInteractionTime = now - 500;
+
+      // Occasional clean click on interactive input
+      if (tickCount % 4 === 0) {
+        t.clickEvents.push({ time: now, x: 450, y: 300, isError: false });
+      }
+
+      emitSnapshot();
+    }, 700);
+
+    activeSimulationRef.current = {
+      stop: () => {
+        clearInterval(simInterval);
+      }
+    };
+  }, [stopSimulation, emitSnapshot]);
+
+  /**
+   * Manual friction simulation helper for single-click synthetic spikes
+   */
   const triggerSimulatedFriction = useCallback(
     (field = "annualIncome", score = 88, options = {}) => {
       const { force = false } = options;
@@ -585,6 +741,8 @@ export function useTelemetry({
   );
 
   const resetTelemetry = useCallback(() => {
+    stopSimulation();
+
     trackerRef.current = {
       lastSampleX: null,
       lastSampleY: null,
@@ -605,6 +763,8 @@ export function useTelemetry({
       lastThresholdFireTime: 0
     };
 
+    setTelemetryHistory([]);
+
     emitSnapshot({
       activeField: activeFieldRef.current,
       metrics: {
@@ -617,7 +777,11 @@ export function useTelemetry({
       },
       cognitiveLoadScore: 0
     });
-  }, [emitSnapshot]);
+  }, [stopSimulation, emitSnapshot]);
+
+  const exportTelemetryCSV = useCallback(() => {
+    downloadCSVReport(telemetryHistory);
+  }, [telemetryHistory]);
 
   const score = telemetrySnapshot.cognitiveLoadScore;
   const isFrustrated = score >= threshold;
@@ -635,6 +799,14 @@ export function useTelemetry({
     hasMinimumActivity: telemetrySnapshot.hasMinimumActivity,
     activeField: telemetrySnapshot.activeField,
     telemetrySnapshot,
+    telemetryHistory,
+    simulationMode,
+    startConfusionSimulation,
+    startCalmSimulation,
+    stopSimulation,
+    simulateConfusion: startConfusionSimulation,
+    simulateCalm: startCalmSimulation,
+    exportTelemetryCSV,
     triggerSimulatedFriction,
     resetTelemetry
   };

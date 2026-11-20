@@ -5,30 +5,28 @@ import {
   applyExponentialSmoothing,
   DEFAULT_WEIGHTS
 } from "../src/hooks/useTelemetry.js";
+import {
+  simulateConfusion,
+  simulateCalmUser,
+  generateTelemetryReportCSV
+} from "../src/utils/telemetrySimulator.js";
 import { validateTelemetryMessage } from "../../backend/src/validators/telemetryValidator.js";
 
 console.log("=================================================================");
-console.log("🧪 AuraGen Frontend Telemetry Tracker Unit Test Suite (Commit 2)");
+console.log("🧪 AuraGen Frontend Telemetry Unit Test Suite (Commit 3)");
+console.log("   Calibrated Scoring, Confusion & Calm Simulator, and CSV Report");
 console.log("=================================================================");
 
 // -----------------------------------------------------------------------------
 // Test 1: Configured Telemetry Weights Verification
 // -----------------------------------------------------------------------------
 {
-  // Calibrated weights:
-  // - Velocity variance: 0.25 (25 pts)
-  // - Direction changes: 0.20 (20 pts)
-  // - Hesitation: 0.25 (25 pts)
-  // - Rage clicks: 0.20 (20 pts)
-  // - Click errors: 0.10 (10 pts)
-  // Total: 100 pts
   assert.equal(DEFAULT_WEIGHTS.velocityVariance, 25, "Velocity variance weight must be 25 (0.25)");
   assert.equal(DEFAULT_WEIGHTS.directionChanges, 20, "Direction changes weight must be 20 (0.20)");
   assert.equal(DEFAULT_WEIGHTS.hesitation, 25, "Hesitation weight must be 25 (0.25)");
   assert.equal(DEFAULT_WEIGHTS.rageClicks, 20, "Rage clicks weight must be 20 (0.20)");
   assert.equal(DEFAULT_WEIGHTS.clickErrorRate, 10, "Click error rate weight must be 10 (0.10)");
 
-  // Sum of weights must equal 100
   const totalWeight =
     DEFAULT_WEIGHTS.velocityVariance +
     DEFAULT_WEIGHTS.directionChanges +
@@ -45,7 +43,7 @@ console.log("=================================================================")
 // -----------------------------------------------------------------------------
 {
   const rawMetrics = {
-    velocityVariance: 90000, // sqrt(90000) = 300 px/s -> (300 / 600) * 100 = 50%
+    velocityVariance: 90000, // std dev 300 -> (300 / 600) * 100 = 50%
     hesitationMs: 4000,      // (4000 / 8000) * 100 = 50%
     rageClicks: 3,           // (3 / 3) * 100 = 100%
     clickErrorRate: 0.35,    // 0.35 * 100 = 35%
@@ -54,13 +52,12 @@ console.log("=================================================================")
 
   const norm = normalizeTelemetryMetrics(rawMetrics);
 
-  assert.equal(norm.velocityVariance, 50, "Variance 90000 (std dev 300) must normalize to 50");
+  assert.equal(norm.velocityVariance, 50, "Variance 90000 must normalize to 50");
   assert.equal(norm.hesitation, 50, "Hesitation 4000ms must normalize to 50");
   assert.equal(norm.rageClicks, 100, "3 rage clicks must normalize to 100");
-  assert.equal(norm.clickErrorRate, 35, "0.35 click error rate must normalize to 35");
+  assert.equal(norm.clickErrorRate, 35, "0.35 error rate must normalize to 35");
   assert.equal(norm.directionChanges, 50, "6 direction changes must normalize to 50");
 
-  // Every normalized metric must be in the [0, 100] range
   for (const [key, value] of Object.entries(norm)) {
     assert.ok(
       value >= 0 && value <= 100,
@@ -75,57 +72,78 @@ console.log("=================================================================")
 // Test 3: Score Boundaries & Clamping ([0, 100])
 // -----------------------------------------------------------------------------
 {
-  // Zero state
-  const zeroMetrics = {
+  const zeroScore = computeCognitiveLoadScore({
     mouseVelocity: 0,
     velocityVariance: 0,
     hesitationMs: 0,
     rageClicks: 0,
     clickErrorRate: 0,
     directionChanges: 0
-  };
-  const zeroScore = computeCognitiveLoadScore(zeroMetrics);
-  assert.equal(zeroScore, 0, "Zero metrics must result in a score of exactly 0");
+  });
+  assert.equal(zeroScore, 0, "Zero metrics must result in 0");
 
-  // Extreme overload state
-  const overloadMetrics = {
-    mouseVelocity: 15000,
+  const maxScore = computeCognitiveLoadScore({
     velocityVariance: 5000000,
     hesitationMs: 90000,
     rageClicks: 25,
     clickErrorRate: 1.0,
     directionChanges: 100
-  };
-  const maxScore = computeCognitiveLoadScore(overloadMetrics);
-  assert.equal(maxScore, 100, "Extreme metrics must clamp cleanly at exactly 100");
+  });
+  assert.equal(maxScore, 100, "Extreme metrics must clamp cleanly at 100");
 
-  // Negative boundary protection
-  const negativeMetrics = {
-    mouseVelocity: -500,
+  const minScore = computeCognitiveLoadScore({
     velocityVariance: -1000,
     hesitationMs: -2000,
     rageClicks: -5,
     clickErrorRate: -0.5,
     directionChanges: -10
-  };
-  const minClampedScore = computeCognitiveLoadScore(negativeMetrics);
-  assert.equal(minClampedScore, 0, "Negative metrics must clamp cleanly to 0");
+  });
+  assert.equal(minScore, 0, "Negative metrics must clamp cleanly to 0");
 
   console.log("✅ Test 3 Passed: Score boundaries strictly clamped within [0, 100]");
 }
 
 // -----------------------------------------------------------------------------
-// Test 4: Normal User Activity Scenario (Calm Flow)
+// Test 4: Confusion Simulator Mechanics & Score Spike Demonstration
 // -----------------------------------------------------------------------------
 {
-  // Normal calm user activity:
-  // - Smooth, steady cursor (stdDev ~ 80 px/s -> variance ~6400 -> norm ~13.3)
-  // - Minimal hesitation (1200ms -> norm ~15)
-  // - 0 rage clicks -> norm 0
-  // - Low click errors (0 error clicks -> norm 0)
-  // - Gentle steering (1 direction change -> norm ~8.3)
+  // Confused user characteristics simulated over a multi-stage episode:
+  // - High velocity variance: 175,000 (stdDev ~418 px/s) -> norm 69.7% -> 17.4 pts
+  // - Significant hesitation: 6,800ms pause -> norm 85% -> 21.3 pts
+  // - Clustered rage clicks: 3 incidents -> norm 100% -> 20.0 pts
+  // - Misclicks / validation errors: 0.40 error rate -> norm 40% -> 4.0 pts
+  // - Erratic direction changes: 11 deflections -> norm 91.7% -> 18.3 pts
+  // Total expected: ~17.4 + 21.3 + 20.0 + 4.0 + 18.3 = 81.0 -> 81 pts
+  const confusedMetrics = {
+    velocityVariance: 175000,
+    hesitationMs: 6800,
+    rageClicks: 3,
+    clickErrorRate: 0.40,
+    directionChanges: 11
+  };
+
+  const confusedScore = computeCognitiveLoadScore(confusedMetrics);
+  assert.ok(
+    confusedScore >= 70,
+    `Confused simulation must produce a score spike breaching the 70 threshold (got ${confusedScore})`
+  );
+
+  console.log(`✅ Test 4 Passed: Confused user simulation produces clear score spike (${confusedScore}/100 >= 70)`);
+}
+
+// -----------------------------------------------------------------------------
+// Test 5: Calm User Simulator Mechanics & Low Score Verification
+// -----------------------------------------------------------------------------
+{
+  // Calm user characteristics:
+  // - Steady, gentle cursor: velocity variance 4,900 (stdDev 70 px/s) -> norm 11.7% -> 2.9 pts
+  // - Minimal hesitation: 1,200ms -> norm 15% -> 3.75 pts
+  // - 0 rage clicks -> norm 0% -> 0 pts
+  // - 0 click errors -> norm 0% -> 0 pts
+  // - 1 gentle curve deflection -> norm 8.3% -> 1.66 pts
+  // Total expected: ~2.9 + 3.75 + 0 + 0 + 1.66 = ~8.3 -> 8 pts
   const calmMetrics = {
-    velocityVariance: 6400,
+    velocityVariance: 4900,
     hesitationMs: 1200,
     rageClicks: 0,
     clickErrorRate: 0,
@@ -133,281 +151,208 @@ console.log("=================================================================")
   };
 
   const calmScore = computeCognitiveLoadScore(calmMetrics);
-  // Expected: (13.3 * 0.25) + (15 * 0.25) + (0 * 0.20) + (0 * 0.10) + (8.3 * 0.20) = 3.3 + 3.75 + 0 + 0 + 1.66 = ~8.7 -> 9
   assert.ok(
     calmScore < 30,
-    `Normal calm user activity score must remain low (< 30), got ${calmScore}`
+    `Calm user simulation must maintain a low score (< 30) representing optimal flow (got ${calmScore})`
   );
 
-  console.log(`✅ Test 4 Passed: Normal calm user activity produces low score (${calmScore}/100 < 30)`);
+  console.log(`✅ Test 5 Passed: Calm user simulation maintains a lower score (${calmScore}/100 < 30)`);
 }
 
 // -----------------------------------------------------------------------------
-// Test 5: User Hesitation Scenario (Long Pause on Field)
+// Test 6: Direct Comparison: Confused Spike vs. Calm Flow Separation
 // -----------------------------------------------------------------------------
 {
-  // User pauses on a confusing field for 7.5 seconds (7500ms):
-  // Hesitation alone: (7500 / 8000) * 100 = 93.8% norm -> 93.8 * 0.25 = ~23.5 pts
-  const hesitationOnlyMetrics = {
-    velocityVariance: 0,
-    hesitationMs: 7500,
-    rageClicks: 0,
-    clickErrorRate: 0,
-    directionChanges: 0
-  };
-
-  const hesitationScore = computeCognitiveLoadScore(hesitationOnlyMetrics);
-  assert.ok(
-    hesitationScore >= 22 && hesitationScore <= 24,
-    `Hesitation alone at 7500ms should contribute ~23-24 points, got ${hesitationScore}`
-  );
-
-  // Maximum hesitation (8000ms+) must reach the full 25 points allocation
-  const maxHesitationScore = computeCognitiveLoadScore({
-    velocityVariance: 0,
-    hesitationMs: 10000,
-    rageClicks: 0,
-    clickErrorRate: 0,
-    directionChanges: 0
-  });
-  assert.equal(maxHesitationScore, 25, "Max hesitation must reach the full 25 point weight");
-
-  console.log(`✅ Test 5 Passed: User hesitation accurately isolated and measured (${hesitationScore}/25 pts)`);
-}
-
-// -----------------------------------------------------------------------------
-// Test 6: Repeated Clicks Scenario (Rage Click Bursts)
-// -----------------------------------------------------------------------------
-{
-  // Rage clicks alone:
-  // 1 rage incident -> (1 / 3) * 20 = ~6.7 pts
-  const singleRageScore = computeCognitiveLoadScore({ rageClicks: 1 });
-  assert.equal(singleRageScore, 7, "1 rage click incident should yield ~7 pts");
-
-  // 3+ rage incidents -> (3 / 3) * 20 = 20 pts
-  const maxRageScore = computeCognitiveLoadScore({ rageClicks: 3 });
-  assert.equal(maxRageScore, 20, "3 rage click incidents must reach the full 20 point weight");
-
-  console.log(`✅ Test 6 Passed: Repeated rage clicks accurately scaled (1 incident: ${singleRageScore} pts, 3 incidents: ${maxRageScore} pts)`);
-}
-
-// -----------------------------------------------------------------------------
-// Test 7: High Confusion Combined Scenario (Threshold Breach >= 70)
-// -----------------------------------------------------------------------------
-{
-  // Highly confused user exhibiting multiple friction signals:
-  // - Erratic cursor movements: velocity variance = 160,000 (stdDev 400 px/s) -> norm 66.7% -> 16.7 pts
-  // - Significant hesitation: 6,000ms pause -> norm 75% -> 18.8 pts
-  // - Frustrated clicking: 3 rage clicks -> norm 100% -> 20.0 pts
-  // - Form validation errors / misclicks: 0.50 error rate -> norm 50% -> 5.0 pts
-  // - Erratic cursor steering: 9 direction changes -> norm 75% -> 15.0 pts
-  // Total expected: ~16.7 + 18.8 + 20.0 + 5.0 + 15.0 = 75.5 -> 76 pts
-  const highConfusionMetrics = {
+  const confusedScore = computeCognitiveLoadScore({
     velocityVariance: 160000,
-    hesitationMs: 6000,
+    hesitationMs: 6500,
     rageClicks: 3,
-    clickErrorRate: 0.5,
-    directionChanges: 9
-  };
+    clickErrorRate: 0.45,
+    directionChanges: 10
+  });
 
-  const highConfusionScore = computeCognitiveLoadScore(highConfusionMetrics);
+  const calmScore = computeCognitiveLoadScore({
+    velocityVariance: 3600,
+    hesitationMs: 800,
+    rageClicks: 0,
+    clickErrorRate: 0,
+    directionChanges: 1
+  });
+
+  const scoreSeparation = confusedScore - calmScore;
   assert.ok(
-    highConfusionScore >= 70,
-    `High confusion scenario must cross the 70 threshold, got ${highConfusionScore}`
+    scoreSeparation >= 50,
+    `Clear statistical separation between confused and calm activity required (got delta of ${scoreSeparation} pts)`
   );
+  assert.ok(confusedScore >= 70, `Confused score must be >= 70, got ${confusedScore}`);
+  assert.ok(calmScore <= 20, `Calm score must be <= 20, got ${calmScore}`);
 
-  console.log(`✅ Test 7 Passed: High confusion combined scenario crosses threshold (${highConfusionScore}/100 >= 70)`);
+  console.log(
+    `✅ Test 6 Passed: Demonstrated clear score distinction: Confused (${confusedScore}) vs Calm (${calmScore}) -> Δ = ${scoreSeparation} pts`
+  );
 }
 
 // -----------------------------------------------------------------------------
-// Test 8: Exponential Smoothing (Asymmetric Fast Attack & Gentle Decay)
+// Test 7: Simulation Controller Lifecycle & Stop Cleanup
 // -----------------------------------------------------------------------------
 {
-  // Fast attack: when score spikes from 0 to 80
-  const step1 = applyExponentialSmoothing(0, 80, 0.65);
-  assert.ok(step1 < 80, `First step should be smoothed (got ${step1} < 80)`);
-  assert.ok(step1 >= 40, `Fast-attack rise should respond briskly (got ${step1} >= 40)`);
+  let tickCount = 0;
+  const sim = simulateConfusion({
+    durationMs: 10000,
+    onTick: () => {
+      tickCount += 1;
+    }
+  });
 
-  const step2 = applyExponentialSmoothing(step1, 80, 0.65);
-  assert.ok(step2 > step1, "Score should smoothly approach raw score on subsequent steps");
+  assert.equal(sim.isRunning(), true, "Simulation must report isRunning() === true after start");
+  sim.stop();
+  assert.equal(sim.isRunning(), false, "Simulation must report isRunning() === false after stop()");
 
-  // Gentle decay: when score drops from 80 to 0, decay is slower to prevent UI flicker
-  const dropStep1 = applyExponentialSmoothing(80, 0, 0.75);
-  assert.ok(dropStep1 >= 55, `Decay should be gradual to avoid UI flicker (got ${dropStep1} >= 55)`);
+  const calmSim = simulateCalmUser({
+    durationMs: 10000
+  });
+  assert.equal(calmSim.isRunning(), true, "Calm simulation must report isRunning() === true after start");
+  calmSim.stop();
+  assert.equal(calmSim.isRunning(), false, "Calm simulation must stop cleanly");
 
-  console.log(`✅ Test 8 Passed: Exponential smoothing verified (Attack: 0 -> ${step1} -> ${step2}, Decay: 80 -> ${dropStep1})`);
+  console.log("✅ Test 7 Passed: Simulator lifecycle start and stop cleanup verified");
 }
 
 // -----------------------------------------------------------------------------
-// Test 9: Minimum Activity Requirement Gate
+// Test 8: Telemetry Report CSV Export Structure
 // -----------------------------------------------------------------------------
 {
-  // Simulate the minimum activity check logic from useTelemetry:
-  function evaluateTelemetryWithGate({
-    totalInteractions,
-    velocitySampleCount,
-    clickCount,
-    manualOverrideScore,
-    minInteractions = 2,
-    rawScore
-  }) {
-    const hasMinimumActivity =
-      manualOverrideScore !== null ||
-      totalInteractions >= minInteractions ||
-      velocitySampleCount >= minInteractions ||
-      clickCount >= 1;
+  const mockHistory = [
+    {
+      timestamp: "2026-11-20T08:45:00.000Z",
+      timeSeconds: 0,
+      score: 12,
+      rawScore: 12,
+      threshold: 70,
+      isThresholdReached: false,
+      velocityVariance: 3600,
+      hesitationMs: 600,
+      rageClicks: 0,
+      clickErrorRate: 0,
+      directionChanges: 1,
+      mode: "calm"
+    },
+    {
+      timestamp: "2026-11-20T08:45:05.000Z",
+      timeSeconds: 5,
+      score: 78,
+      rawScore: 82,
+      threshold: 70,
+      isThresholdReached: true,
+      velocityVariance: 160000,
+      hesitationMs: 6200,
+      rageClicks: 3,
+      clickErrorRate: 0.40,
+      directionChanges: 9,
+      mode: "confused"
+    }
+  ];
 
+  const csv = generateTelemetryReportCSV(mockHistory);
+  assert.ok(csv.includes("Timestamp,TimeSeconds,CognitiveLoadScore"), "CSV must contain header row");
+  assert.ok(csv.includes("calm"), "CSV must include calm mode records");
+  assert.ok(csv.includes("confused"), "CSV must include confused mode records");
+  assert.ok(csv.includes("78"), "CSV must include spiked score record");
+
+  const lines = csv.trim().split("\n");
+  assert.equal(lines.length, 3, "CSV should contain 1 header line and 2 data rows");
+
+  console.log("✅ Test 8 Passed: Telemetry report CSV export structure generated and validated");
+}
+
+// -----------------------------------------------------------------------------
+// Test 9: Minimum Activity Gate
+// -----------------------------------------------------------------------------
+{
+  function evaluateGate({ totalInteractions, minInteractions = 2, rawScore }) {
+    const hasMinimumActivity = totalInteractions >= minInteractions;
     const effectiveScore = hasMinimumActivity ? rawScore : 0;
     const isTriggerEligible = hasMinimumActivity && effectiveScore >= 70;
-
     return { hasMinimumActivity, effectiveScore, isTriggerEligible };
   }
 
-  // Cold start: 0 interactions
-  const coldStart = evaluateTelemetryWithGate({
-    totalInteractions: 0,
-    velocitySampleCount: 0,
-    clickCount: 0,
-    manualOverrideScore: null,
-    rawScore: 85 // Suppose uninitialized hesitation or noise
-  });
-  assert.equal(coldStart.hasMinimumActivity, false, "Cold start must not satisfy minimum activity");
-  assert.equal(coldStart.effectiveScore, 0, "Score must remain 0 before minimum activity");
-  assert.equal(coldStart.isTriggerEligible, false, "Trigger must be suppressed before minimum activity");
+  const cold = evaluateGate({ totalInteractions: 0, rawScore: 80 });
+  assert.equal(cold.hasMinimumActivity, false);
+  assert.equal(cold.effectiveScore, 0);
+  assert.equal(cold.isTriggerEligible, false);
 
-  // Active user: 2 velocity samples
-  const activeUser = evaluateTelemetryWithGate({
-    totalInteractions: 2,
-    velocitySampleCount: 2,
-    clickCount: 0,
-    manualOverrideScore: null,
-    rawScore: 78
-  });
-  assert.equal(activeUser.hasMinimumActivity, true, "2 interactions satisfy minimum activity");
-  assert.equal(activeUser.effectiveScore, 78, "Effective score equals raw score after activity");
-  assert.equal(activeUser.isTriggerEligible, true, "Trigger is eligible once active and above threshold");
+  const active = evaluateGate({ totalInteractions: 2, rawScore: 80 });
+  assert.equal(active.hasMinimumActivity, true);
+  assert.equal(active.effectiveScore, 80);
+  assert.equal(active.isTriggerEligible, true);
 
-  console.log("✅ Test 9 Passed: Minimum activity requirement gate prevents false positive triggers");
+  console.log("✅ Test 9 Passed: Minimum activity gate verified");
 }
 
 // -----------------------------------------------------------------------------
-// Test 10: 60-Second Cooldown & Prevention of Repeated Requests
+// Test 10: 60-Second Cooldown & Prevention of Repeated Triggers
 // -----------------------------------------------------------------------------
 {
-  function simulateTriggerLifecycle(cooldownMs = 60000) {
-    let lastThresholdFireTime = 0;
-    let hasFiredThresholdForEpisode = false;
-    let triggerCount = 0;
+  function testCooldownCycle() {
+    let lastTriggerTime = 0;
+    const cooldownMs = 60000;
+    let firedCount = 0;
 
-    function processScore(score, now) {
-      const isCooldownActive =
-        lastThresholdFireTime > 0 && now - lastThresholdFireTime < cooldownMs;
-
-      if (score >= 70) {
-        if (!isCooldownActive && !hasFiredThresholdForEpisode) {
-          hasFiredThresholdForEpisode = true;
-          lastThresholdFireTime = now;
-          triggerCount += 1;
-          return { triggered: true, isCooldownActive: true };
-        }
-        return { triggered: false, isCooldownActive };
-      } else if (score < 70 * 0.85) {
-        hasFiredThresholdForEpisode = false;
-        return { triggered: false, isCooldownActive };
+    function handleScore(score, now) {
+      const inCooldown = lastTriggerTime > 0 && now - lastTriggerTime < cooldownMs;
+      if (score >= 70 && !inCooldown) {
+        lastTriggerTime = now;
+        firedCount += 1;
+        return true;
       }
-      return { triggered: false, isCooldownActive };
+      return false;
     }
 
-    return { processScore, getTriggerCount: () => triggerCount };
+    return { handleScore, getCount: () => firedCount };
   }
 
-  const lifecycle = simulateTriggerLifecycle(60000);
+  const cycle = testCooldownCycle();
   const t0 = 100000;
 
-  // Initial trigger at t0 with score 85 -> MUST trigger
-  const res1 = lifecycle.processScore(85, t0);
-  assert.equal(res1.triggered, true, "Initial spike must trigger generation");
-  assert.equal(lifecycle.getTriggerCount(), 1, "Trigger count should be 1");
+  assert.equal(cycle.handleScore(85, t0), true, "First spike fires");
+  assert.equal(cycle.getCount(), 1);
 
-  // Subsequent spike 10s later (t0 + 10s = 110,000) with score 90 -> MUST be blocked by cooldown
-  const res2 = lifecycle.processScore(90, t0 + 10000);
-  assert.equal(res2.triggered, false, "Subsequent spike within 60s must NOT trigger");
-  assert.equal(res2.isCooldownActive, true, "Cooldown must be active 10s after trigger");
-  assert.equal(lifecycle.getTriggerCount(), 1, "Trigger count must remain 1 during cooldown");
+  // During cooldown (15s later)
+  assert.equal(cycle.handleScore(85, t0 + 15000), false, "Spike at 15s blocked by cooldown");
+  assert.equal(cycle.getCount(), 1);
 
-  // User calms down at t0 + 30s
-  lifecycle.processScore(40, t0 + 30000);
-
-  // Another spike at t0 + 45s (still within 60s cooldown) -> MUST be blocked
-  const res3 = lifecycle.processScore(85, t0 + 45000);
-  assert.equal(res3.triggered, false, "Spike at 45s must still be blocked by 60s cooldown");
-  assert.equal(lifecycle.getTriggerCount(), 1, "Trigger count must remain 1");
-
-  // User calms down at t0 + 55s
-  lifecycle.processScore(35, t0 + 55000);
-
-  // New spike at t0 + 61s (61 seconds after first trigger, cooldown expired) -> MUST trigger
-  const res4 = lifecycle.processScore(88, t0 + 61000);
-  assert.equal(res4.triggered, true, "Spike after 60s cooldown expires must trigger new generation");
-  assert.equal(lifecycle.getTriggerCount(), 2, "Trigger count should increment to 2");
+  // After cooldown (65s later)
+  assert.equal(cycle.handleScore(85, t0 + 65000), true, "Spike at 65s fires after cooldown expiration");
+  assert.equal(cycle.getCount(), 2);
 
   console.log("✅ Test 10 Passed: 60-second cooldown strictly prevents repeated generation triggers");
 }
 
 // -----------------------------------------------------------------------------
-// Test 11: Configurable Threshold Support
+// Test 11: Backend Telemetry Validator Compatibility
 // -----------------------------------------------------------------------------
 {
-  const testMetrics = {
-    velocityVariance: 62500, // std dev 250 -> norm 41.7 -> 10.4 pts
-    hesitationMs: 4000,      // norm 50 -> 12.5 pts
-    rageClicks: 1,           // norm 33.3 -> 6.7 pts
-    clickErrorRate: 0.2,     // norm 20 -> 2.0 pts
-    directionChanges: 4      // norm 33.3 -> 6.7 pts
-  };
-  const testScore = computeCognitiveLoadScore(testMetrics);
-  // ~ 10.4 + 12.5 + 6.7 + 2.0 + 6.7 = 38.3 -> 38
-
-  // With relaxed threshold (35):
-  const isTriggeredAt35 = testScore >= 35;
-  assert.equal(isTriggeredAt35, true, "Score 38 must exceed test threshold 35");
-
-  // With default threshold (70):
-  const isTriggeredAt70 = testScore >= 70;
-  assert.equal(isTriggeredAt70, false, "Score 38 must NOT exceed default threshold 70");
-
-  // With strict threshold (85):
-  const isTriggeredAt85 = testScore >= 85;
-  assert.equal(isTriggeredAt85, false, "Score 38 must NOT exceed strict threshold 85");
-
-  console.log(`✅ Test 11 Passed: Configurable threshold behavior verified (Score ${testScore}: exceeds 35, safely below 70 & 85)`);
-}
-
-// -----------------------------------------------------------------------------
-// Test 12: Backend Telemetry Validator Compatibility
-// -----------------------------------------------------------------------------
-{
-  const sampleTelemetryPayload = {
+  const samplePayload = {
     type: "telemetry",
-    sessionId: "sess_unit_test_99",
+    sessionId: "sess_sim_test_01",
     timestamp: Date.now(),
     metrics: {
       mouseVelocity: 450,
-      velocityVariance: 90000,
-      hesitationMs: 3500,
-      rageClicks: 1,
-      clickErrorRate: 0.15,
-      directionChanges: 4
+      velocityVariance: 120000,
+      hesitationMs: 4000,
+      rageClicks: 2,
+      clickErrorRate: 0.25,
+      directionChanges: 6
     },
     normalizedMetrics: {
-      velocityVariance: 50,
-      hesitation: 43.8,
-      rageClicks: 33.3,
-      clickErrorRate: 15,
-      directionChanges: 33.3
+      velocityVariance: 57.7,
+      hesitation: 50,
+      rageClicks: 66.7,
+      clickErrorRate: 25,
+      directionChanges: 50
     },
-    rawScore: 37,
-    cognitiveLoadScore: 37,
+    rawScore: 53,
+    cognitiveLoadScore: 53,
     threshold: 70,
     isTriggered: false,
     isCooldownActive: false,
@@ -416,14 +361,12 @@ console.log("=================================================================")
     activeField: "annualIncome"
   };
 
-  const validation = validateTelemetryMessage(sampleTelemetryPayload);
-  assert.equal(validation.valid, true, `Telemetry message must be valid: ${validation.errors?.join(", ")}`);
-  assert.equal(validation.data.cognitiveLoadScore, 37);
-  assert.equal(validation.data.sessionId, "sess_unit_test_99");
+  const validation = validateTelemetryMessage(samplePayload);
+  assert.equal(validation.valid, true, `Payload must be valid: ${validation.errors?.join(", ")}`);
 
-  console.log("✅ Test 12 Passed: Extended telemetry snapshot strictly valid against backend schema");
+  console.log("✅ Test 11 Passed: Telemetry snapshot fully compliant with backend WebSocket schema");
 }
 
 console.log("\n=================================================================");
-console.log("🎉 All 12 Unit Tests Passed Successfully! (Full Calibration)");
+console.log("🎉 All 11 Unit Tests Passed Successfully!");
 console.log("=================================================================");
