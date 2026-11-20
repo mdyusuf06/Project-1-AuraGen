@@ -139,23 +139,17 @@ export default function ConversationalWizard({
       <div className="bg-gradient-to-r from-[#0D1220] via-[#11172A] to-[#171E33] border-b border-indigo-500/20 p-6 sm:p-7 flex flex-wrap items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1.5">
-            <motion.span
-              layoutId="auragen-badge"
-              className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-400/30"
-            >
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
               AuraGen Guided Assistant
-            </motion.span>
+            </span>
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/40">
               Friction Resolved ({score} pts)
             </span>
           </div>
 
-          <motion.h2
-            layoutId="auragen-title"
-            className="text-xl sm:text-2xl font-black tracking-tight text-white flex items-center gap-2"
-          >
+          <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white flex items-center gap-2">
             Guided Assistance: {formattedField}
-          </motion.h2>
+          </h2>
           <p className="text-xs text-slate-400 mt-0.5">
             Simplified 21-field complexity into 3 conversational steps. All previous data preserved.
           </p>
@@ -202,7 +196,7 @@ export default function ConversationalWizard({
                     backgroundColor: isDone ? "#38D9A9" : isActive ? "#8057FF" : "#1e293b",
                     color: isDone || isActive ? "#ffffff" : "#64748b"
                   }}
-                  transition={springTransition}
+                  transition={{ duration: 0.2, ease: "easeOut" }}
                   className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shadow-sm ${isDone ? "cursor-pointer hover:opacity-80" : ""
                     }`}
                 >
@@ -219,7 +213,7 @@ export default function ConversationalWizard({
                     animate={{
                       width: currentStep > s.num ? "100%" : currentStep === s.num ? "50%" : "0%"
                     }}
-                    transition={{ duration: shouldReduceMotion ? 0 : 0.35, ease: "easeOut" }}
+                    transition={{ duration: shouldReduceMotion ? 0.01 : 0.35, ease: "easeOut" }}
                     className="h-full bg-gradient-to-r from-[#8057FF] to-[#25D9E8] rounded-full"
                   />
                 </div>

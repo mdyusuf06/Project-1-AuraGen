@@ -358,10 +358,24 @@ export const reviewCardVariant = {
  */
 export function getAccessibleVariant(variant, reduceMotion = false) {
   if (!reduceMotion || !variant) return variant;
+
+  const processVariantProp = (prop) => {
+    if (typeof prop === "function") {
+      return (custom) => {
+        const evaluated = prop(custom);
+        return { ...(evaluated || {}), x: 0, y: 0, scale: 1 };
+      };
+    }
+    if (typeof prop === "object" && prop !== null) {
+      return { ...prop, x: 0, y: 0, scale: 1 };
+    }
+    return prop;
+  };
+
   return {
     ...variant,
-    initial: { ...(variant.initial || {}), x: 0, y: 0, scale: 1 },
-    animate: { ...(variant.animate || {}), x: 0, y: 0, scale: 1 },
-    exit: { ...(variant.exit || {}), x: 0, y: 0, scale: 1 }
+    initial: processVariantProp(variant.initial),
+    animate: processVariantProp(variant.animate),
+    exit: processVariantProp(variant.exit)
   };
 }

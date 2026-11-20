@@ -10,20 +10,16 @@ import SimplifyingOverlay from "../components/SimplifyingOverlay";
 import SimulatedCursorOverlay from "../components/SimulatedCursorOverlay";
 import GeneratedCodeDrawer from "../components/GeneratedCodeDrawer";
 import TelemetryDebugPanel from "../components/TelemetryDebugPanel";
+import { ErrorBoundary } from "../fallback/ErrorBoundary.js";
+import { WizardLoadingSkeleton } from "../fallback/WizardLoadingSkeleton.js";
+import { useGenerationFallback } from "../fallback/useGenerationFallback.js";
+import { AnimatePresence, motion } from "framer-motion";
 import {
-  ErrorBoundary,
-  WizardLoadingSkeleton,
-  useGenerationFallback,
-  getFallbackTemplate
-} from "../fallback";
-import {
-  AnimatePresence,
-  motion,
   slideInUp,
   originalFormMorphVariant,
   wizardMorphVariant,
   revertMorphVariant
-} from "../animation";
+} from "../animation/variants.js";
 import { createInitialFormValues } from "../data/financialFormSchema";
 
 const DEFAULT_THRESHOLD = Number(process.env.NEXT_PUBLIC_COGNITIVE_LOAD_THRESHOLD || 70);
@@ -540,6 +536,10 @@ export default function AuraGenDemoPage() {
                   initialValues={sharedFormValues}
                   onUpdateValues={(vals) => setSharedFormValues((prev) => ({ ...prev, ...vals }))}
                   onRestoreOriginal={handleRevertToOriginalForm}
+                  onSubmitWizard={(vals) => {
+                    setSharedFormValues((prev) => ({ ...prev, ...vals }));
+                    handleRevertToOriginalForm();
+                  }}
                   score={score}
                 />
               </ErrorBoundary>
