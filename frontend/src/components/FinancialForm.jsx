@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   FINANCIAL_FORM_SECTIONS,
   ALL_FORM_FIELDS,
@@ -12,9 +12,23 @@ import {
 export default function FinancialForm({
   activeField,
   onActiveFieldChange,
-  onFormValuesChange
+  onFormValuesChange,
+  initialValues = null,
+  formValues = null
 }) {
-  const [values, setValues] = useState(() => createInitialFormValues());
+  const [values, setValues] = useState(() => {
+    const base = createInitialFormValues();
+    const incoming = formValues || initialValues;
+    return incoming ? { ...base, ...incoming } : base;
+  });
+
+  // Synchronize values when incoming form state updates (e.g. after reverting from wizard)
+  useEffect(() => {
+    const incoming = formValues || initialValues;
+    if (incoming) {
+      setValues((prev) => ({ ...prev, ...incoming }));
+    }
+  }, [formValues, initialValues]);
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState({});
   const [submittedData, setSubmittedData] = useState(null);

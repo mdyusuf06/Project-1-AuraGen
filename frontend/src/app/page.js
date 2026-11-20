@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { useTelemetry } from "../hooks/useTelemetry";
 import TelemetryHUD from "../components/TelemetryHUD";
@@ -19,7 +19,8 @@ import {
   motion,
   slideInUp,
   originalFormMorphVariant,
-  wizardMorphVariant
+  wizardMorphVariant,
+  revertMorphVariant
 } from "../animation";
 import { createInitialFormValues } from "../data/financialFormSchema";
 
@@ -54,9 +55,40 @@ export default function AuraGenDemoPage() {
     isConnected,
     reconnectAttempt,
     sendTelemetry,
+    sendRevert,
     onMessage,
     reconnect
   } = useWebSocket(WS_URL);
+
+  /**
+   * Revert back to original form with zero data loss.
+   * Requirements met:
+   * 1. Reverts without page refresh.
+   * 2. Preserves all previously entered and modified values.
+   * 3. Dispatches WebSocket revert message per shared protocol.
+   * 4. Animates back with Framer Motion.
+   */
+  const handleRevertToOriginalForm = useCallback(() => {
+    // Requirement 8: Notify backend of revert via WebSocket protocol
+    sendRevert(sessionId, sharedFormValues);
+
+    // Cancel in-flight timers
+    if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
+    if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
+
+    setShowSimplifyingOverlay(false);
+    setActiveFallbackTemplate(null);
+
+    // Requirement 2: Switch to original form without page reload
+    setViewMode("form");
+
+    // Requirement 7: User-friendly notification confirming data preservation
+    setFallbackNotification({
+      type: "restored",
+      title: "Original Form Restored",
+      message: "Returned to the full 21-field application. All your previously entered and updated details have been preserved."
+    });
+  }, [sendRevert, sessionId, sharedFormValues]);
 
   // Generation fallback manager with 4-second timeout & validation failure recovery
   const {
@@ -87,16 +119,7 @@ export default function AuraGenDemoPage() {
     },
     onRestoreOriginal: (state) => {
       console.log("[Fallback] Restoring original form (template unavailable):", state);
-      setActiveFallbackTemplate(null);
-      setViewMode("form");
-      setFallbackNotification({
-        type: "restored",
-        title:
-          state.reason === "timeout"
-            ? "Generation Timed Out (4s)"
-            : "Assistant Unavailable",
-        message: state.message
-      });
+      handleRevertToOriginalForm();
     },
     onSuccess: () => {
       console.log("[Fallback] Generation succeeded, timeout cancelled.");
@@ -175,7 +198,7 @@ export default function AuraGenDemoPage() {
         setCurrentThreshold(msg.threshold);
       }
 
-      // Requirement 1 & 8: Route message to fallback coordinator
+      // Route message to fallback coordinator
       handleFallbackMessage(msg);
 
       if (msg.type === "component" && typeof msg.code === "string") {
@@ -205,24 +228,6 @@ export default function AuraGenDemoPage() {
     resetTelemetry();
   };
 
-  // Development helper actions to verify fallback behaviors interactively
-  const handleSimulateValidationFailed = () => {
-    startGeneration({ activeField });
-    setViewMode("loading");
-    setTimeout(() => {
-      handleFallbackMessage({
-        type: "validation_failed",
-        errors: [{ rule: "no-eval", message: "Banned syntax eval() detected by Pavilson validator." }]
-      });
-    }, 400);
-  };
-
-  const handleSimulateTimeout = () => {
-    startGeneration({ activeField });
-    setViewMode("loading");
-    // Timeout will automatically trigger in 4000ms
-  };
-
   const latestComponent = receivedComponents[0] || null;
 
   return (
@@ -247,7 +252,35 @@ export default function AuraGenDemoPage() {
         onOpenCodeDrawer={() => setIsDrawerOpen(true)}
       />
 
-      {/* Requirement 7: Fallback Notification Banner */}
+      {/* Requirement 1: Visible Persistent "Back to Original Form" Button when simplified mode is active */}
+      <AnimatePresence>
+        {viewMode !== "form" && (
+          <motion.div
+            key="persistent-back-bar"
+            variants={slideInUp}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            className="sticky top-4 z-40 mb-4 flex items-center justify-between bg-slate-900/90 text-white px-4 py-2.5 rounded-2xl border border-slate-700/80 shadow-xl backdrop-blur-md"
+          >
+            <div className="flex items-center gap-2 text-xs">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="font-semibold text-slate-200">Simplified Assistance Active</span>
+              <span className="hidden sm:inline text-slate-400">• Form state synchronized</span>
+            </div>
+            <button
+              type="button"
+              onClick={handleRevertToOriginalForm}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-xs font-bold text-white shadow-md transition-all hover:scale-[1.02] active:scale-[0.98]"
+              title="Return to the complete 21-field financial form (preserves all data)"
+            >
+              <span>← Back to Original Form</span>
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Fallback Notification Banner */}
       <AnimatePresence>
         {fallbackNotification && (
           <motion.div
@@ -332,15 +365,12 @@ export default function AuraGenDemoPage() {
       </AnimatePresence>
 
       {/*
-        Requirements 3, 4, 5, 6, 7, 8, 9 & Fallback UI:
+        Requirements 1-8:
         - Reserved min-height container (min-h-[620px]) to prevent layout jumps
         - AnimatePresence mode="wait" for non-overlapping transitions
-        - Original form fades out and scales down (350ms)
-        - Loading skeleton displayed while component is prepared ("Preparing your simplified form...")
-        - 4-second timeout fallback handling
-        - Pre-built wizard template rendering when available
-        - Clean restoration to original form if template unavailable
-        - Reusable ErrorBoundary wrapping the conversational wizard
+        - Original form fades in and animates back using revertMorphVariant
+        - Preserves all entered values bidirectionally (sharedFormValues passed to FinancialForm)
+        - Clean restoration without page refresh
       */}
       <div className="relative min-h-[620px]">
         <AnimatePresence mode="wait">
@@ -348,7 +378,7 @@ export default function AuraGenDemoPage() {
             <motion.div
               key="original-complex-form"
               layoutId="auragen-form-card"
-              variants={originalFormMorphVariant}
+              variants={revertMorphVariant}
               initial="initial"
               animate="animate"
               exit="exit"
@@ -359,6 +389,8 @@ export default function AuraGenDemoPage() {
                 activeField={activeField}
                 onActiveFieldChange={setActiveField}
                 onFormValuesChange={setSharedFormValues}
+                initialValues={sharedFormValues}
+                formValues={sharedFormValues}
               />
             </motion.div>
           ) : viewMode === "loading" ? (
@@ -375,10 +407,7 @@ export default function AuraGenDemoPage() {
               <WizardLoadingSkeleton
                 activeField={activeField}
                 loadingMessage="Preparing your simplified form..."
-                onCancel={() => {
-                  cancelGeneration();
-                  setViewMode("form");
-                }}
+                onCancel={handleRevertToOriginalForm}
               />
             </motion.div>
           ) : viewMode === "fallback-template" && activeFallbackTemplate ? (
@@ -396,18 +425,10 @@ export default function AuraGenDemoPage() {
                 activeField,
                 initialValues: sharedFormValues,
                 onUpdateValues: (vals) => setSharedFormValues((prev) => ({ ...prev, ...vals })),
-                onRestoreOriginal: () => {
-                  setViewMode("form");
-                  setFallbackNotification(null);
-                },
+                onRestoreOriginal: handleRevertToOriginalForm,
                 onSubmitWizard: (vals) => {
                   setSharedFormValues((prev) => ({ ...prev, ...vals }));
-                  setViewMode("form");
-                  setFallbackNotification({
-                    type: "restored",
-                    title: "Success",
-                    message: "Form updated via pre-built assistant and saved."
-                  });
+                  handleRevertToOriginalForm();
                 }
               })}
             </motion.div>
@@ -424,7 +445,7 @@ export default function AuraGenDemoPage() {
             >
               <ErrorBoundary
                 key={wizardKey}
-                onRestoreOriginal={() => setViewMode("form")}
+                onRestoreOriginal={handleRevertToOriginalForm}
                 onRetry={() => {
                   setWizardKey((prev) => prev + 1);
                   startGeneration({ activeField });
@@ -435,7 +456,7 @@ export default function AuraGenDemoPage() {
                   activeField={activeField}
                   initialValues={sharedFormValues}
                   onUpdateValues={(vals) => setSharedFormValues((prev) => ({ ...prev, ...vals }))}
-                  onRestoreOriginal={() => setViewMode("form")}
+                  onRestoreOriginal={handleRevertToOriginalForm}
                   score={score}
                 />
               </ErrorBoundary>

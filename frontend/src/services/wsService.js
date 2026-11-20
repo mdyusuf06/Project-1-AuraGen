@@ -182,6 +182,32 @@ export function createAuraGenWsService(url, options = {}) {
   }
 
   /**
+   * Sends a revert action payload to restore the original form and notify the backend.
+   * Requirement 8: Shared WebSocket protocol revert command.
+   * @param {string} sessionId
+   * @param {object} [formValues]
+   * @returns {boolean} True if sent
+   */
+  function sendRevert(sessionId, formValues) {
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+
+    const payload = {
+      type: "revert",
+      sessionId: String(sessionId || "anonymous"),
+      timestamp: Date.now()
+    };
+
+    if (formValues && typeof formValues === "object") {
+      payload.formValues = formValues;
+    }
+
+    socket.send(JSON.stringify(payload));
+    return true;
+  }
+
+  /**
    * Subscribes to incoming parsed JSON messages from the WebSocket server.
    * @param {function} callback
    * @returns {function} Unsubscribe function
@@ -217,6 +243,7 @@ export function createAuraGenWsService(url, options = {}) {
     },
     getStatus: () => status,
     sendTelemetry,
+    sendRevert,
     onMessage,
     onStatusChange
   };

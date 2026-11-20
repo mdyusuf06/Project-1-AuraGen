@@ -65,6 +65,31 @@ export function createAuraGenServer({
     }
 
     ws.on("message", async (rawData) => {
+      // Handle revert protocol message
+      let parsed = null;
+      try {
+        parsed = typeof rawData === "string" ? JSON.parse(rawData) : JSON.parse(rawData.toString("utf-8"));
+      } catch {}
+
+      if (parsed && parsed.type === "revert") {
+        const sid = parsed.sessionId || "anonymous";
+        console.log(`[WS] Revert message received for session "${sid}". Resetting in-flight state.`);
+        const state = sessionStates.get(sid);
+        if (state) {
+          state.inFlight = false;
+        }
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(
+            JSON.stringify({
+              type: "reverted",
+              sessionId: sid,
+              timestamp: Date.now()
+            })
+          );
+        }
+        return;
+      }
+
       const validation = validateTelemetryMessage(rawData);
 
       if (!validation.valid) {

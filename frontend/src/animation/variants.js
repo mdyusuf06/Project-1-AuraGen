@@ -220,6 +220,34 @@ export const wizardMorphVariant = {
 };
 
 /**
+ * Dedicated Revert Morph Variant:
+ * Smoothly animates the return from the conversational wizard back to the original form.
+ */
+export const revertMorphVariant = {
+  initial: {
+    opacity: 0,
+    scale: 0.97,
+    y: -14
+  },
+  animate: {
+    opacity: 1,
+    scale: 1,
+    y: 0,
+    transition: {
+      opacity: { duration: 0.32, ease: "easeOut" },
+      scale: springTransition,
+      y: springTransition
+    }
+  },
+  exit: {
+    opacity: 0,
+    scale: 0.95,
+    y: -10,
+    transition: { duration: 0.3, ease: "easeIn" }
+  }
+};
+
+/**
  * "Simplifying this for you..." short modal overlay variant
  */
 export const simplifyingOverlayVariant = {
