@@ -339,17 +339,17 @@ export default function AuraGenDemoPage() {
             initial="initial"
             animate="animate"
             exit="exit"
-            className="sticky top-4 z-40 mb-4 flex items-center justify-between bg-slate-900/90 text-white px-4 py-2.5 rounded-2xl border border-slate-700/80 shadow-xl backdrop-blur-md"
+            className="sticky top-4 z-40 mb-4 flex items-center justify-between bg-[#11172A]/95 text-white px-5 py-3 rounded-2xl border border-indigo-500/30 shadow-[0_0_30px_rgba(128,87,255,0.2)] backdrop-blur-xl"
           >
-            <div className="flex items-center gap-2 text-xs">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="font-semibold text-slate-200">Simplified Assistance Active</span>
-              <span className="hidden sm:inline text-slate-400">• Form state synchronized</span>
+            <div className="flex items-center gap-2.5 text-xs">
+              <span className="w-2 h-2 rounded-full bg-[#38D9A9] shadow-[0_0_8px_#38D9A9] animate-pulse" />
+              <span className="font-extrabold text-white">Simplified Assistance Active</span>
+              <span className="hidden sm:inline text-indigo-300">• State fully synchronized</span>
             </div>
             <button
               type="button"
               onClick={handleRevertToOriginalForm}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-xs font-bold text-white shadow-md transition-all hover:scale-[1.02] active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-[#8057FF] to-[#25D9E8] hover:opacity-95 text-xs font-bold text-white shadow-lg shadow-indigo-600/30 transition-all hover:scale-[1.02] active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none"
               title="Return to the complete 21-field financial form (preserves all data)"
             >
               <span>← Back to Original Form</span>
