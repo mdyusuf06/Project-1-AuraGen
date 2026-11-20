@@ -2,9 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --bg-primary: #080B16;
+  --bg-secondary: #0D1220;
+  --surface-card: #11172A;
+  --surface-elevated: #171E33;
+  --color-violet: #8057FF;
+  --color-lavender: #B69CFF;
+  --color-cyan: #25D9E8;
+  --color-success: #38D9A9;
+  --color-error: #FF647C;
+}
+
 @layer base {
   body {
-    @apply bg-slate-50 text-slate-900 antialiased;
+    @apply bg-[#080B16] text-[#F4F3FF] antialiased selection:bg-[#8057FF]/30 selection:text-white min-h-screen;
   }
 }
 

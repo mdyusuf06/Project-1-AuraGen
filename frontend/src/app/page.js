@@ -7,6 +7,7 @@ import TelemetryHUD from "../components/TelemetryHUD";
 import FinancialForm from "../components/FinancialForm";
 import ConversationalWizard from "../components/ConversationalWizard";
 import SimplifyingOverlay from "../components/SimplifyingOverlay";
+import SimulatedCursorOverlay from "../components/SimulatedCursorOverlay";
 import GeneratedCodeDrawer from "../components/GeneratedCodeDrawer";
 import TelemetryDebugPanel from "../components/TelemetryDebugPanel";
 import {
@@ -366,10 +367,10 @@ export default function AuraGenDemoPage() {
             initial="initial"
             animate="animate"
             exit="exit"
-            className={`mb-6 p-4 rounded-2xl border flex flex-wrap items-center justify-between gap-4 shadow-sm ${
+            className={`mb-6 p-4 rounded-2xl border flex flex-wrap items-center justify-between gap-4 shadow-xl backdrop-blur-xl ${
               fallbackNotification.type === "template"
-                ? "bg-amber-50 border-amber-200 text-amber-950"
-                : "bg-slate-100 border-slate-300 text-slate-800"
+                ? "bg-[#11172A]/90 border-amber-500/40 text-amber-200"
+                : "bg-[#11172A]/90 border-slate-700 text-slate-200"
             }`}
           >
             <div className="flex items-center gap-2 text-xs sm:text-sm">
@@ -377,16 +378,16 @@ export default function AuraGenDemoPage() {
                 {fallbackNotification.type === "template" ? "⚡" : "🛡️"}
               </span>
               <div>
-                <strong className="font-semibold block sm:inline mr-1">
+                <strong className="font-semibold block sm:inline mr-1 text-white">
                   {fallbackNotification.title}:
                 </strong>
-                <span className="text-slate-600">{fallbackNotification.message}</span>
+                <span className="text-slate-300">{fallbackNotification.message}</span>
               </div>
             </div>
             <button
               type="button"
               onClick={() => setFallbackNotification(null)}
-              className="px-3 py-1 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 bg-white border border-slate-200 hover:bg-slate-50 transition-colors focus-visible:ring-2 focus-visible:ring-slate-400"
+              className="px-3 py-1 rounded-lg text-xs font-bold text-slate-300 hover:text-white bg-slate-800 border border-slate-700 hover:bg-slate-700 transition-colors focus-visible:ring-2 focus-visible:ring-indigo-400"
             >
               Dismiss
             </button>
@@ -416,15 +417,15 @@ export default function AuraGenDemoPage() {
             initial="initial"
             animate="animate"
             exit="exit"
-            className="mb-6 bg-indigo-50 border border-indigo-200 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 shadow-sm"
+            className="mb-6 bg-[#11172A]/90 border border-indigo-500/40 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 shadow-[0_0_25px_rgba(128,87,255,0.15)] backdrop-blur-xl"
           >
-            <div className="text-sm text-indigo-950">
-              <strong className="font-semibold">
+            <div className="text-sm text-slate-200">
+              <strong className="font-bold text-white">
                 AuraGen Self-Healing Payload Received!
               </strong>{" "}
-              <span className="text-indigo-800">
+              <span className="text-indigo-300">
                 Backend code-gen generated a conversational assistant for{" "}
-                <code className="font-mono text-xs bg-indigo-100 px-1.5 py-0.5 rounded font-bold">
+                <code className="font-mono text-xs bg-indigo-950 px-1.5 py-0.5 rounded font-bold text-cyan-300 border border-indigo-500/30">
                   {activeField}
                 </code>
                 .
@@ -433,7 +434,7 @@ export default function AuraGenDemoPage() {
             <button
               type="button"
               onClick={() => setIsDrawerOpen(true)}
-              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold text-white transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500"
+              className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-xs font-semibold text-white transition-all shadow-md focus-visible:ring-2 focus-visible:ring-indigo-400"
             >
               Inspect Generated Code ({latestComponent.code.length} chars)
             </button>
@@ -551,6 +552,14 @@ export default function AuraGenDemoPage() {
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
         componentData={latestComponent}
+      />
+
+      {/* Live Simulation Floating Feedback HUD */}
+      <SimulatedCursorOverlay
+        simulationMode={simulationMode}
+        score={score}
+        threshold={currentThreshold}
+        onStopSimulation={stopSimulation}
       />
 
       {/* Requirement 6 & 7: Development Telemetry Debug Cockpit (Collapsible floating panel) */}
