@@ -1,0 +1,275 @@
+{
+  "testCases": [
+    {
+      "id": "TC-01",
+      "name": "Long Loan Application",
+      "scenario": "A multi-field personal and commercial loan application that overwhelms users when shown on a single monolithic form page.",
+      "input": {
+        "formName": "LongLoanApplication",
+        "description": "Comprehensive loan application with personal, employment, asset, liability, and collateral details.",
+        "fields": [
+          { "name": "applicantName", "label": "Applicant Full Name", "type": "text", "required": true },
+          { "name": "email", "label": "Email Address", "type": "email", "required": true },
+          { "name": "phone", "label": "Phone Number", "type": "tel", "required": true },
+          { "name": "dob", "label": "Date of Birth", "type": "date", "required": true },
+          { "name": "maritalStatus", "label": "Marital Status", "type": "select", "required": true, "options": [{ "label": "Single", "value": "single" }, { "label": "Married", "value": "married" }] },
+          { "name": "employerName", "label": "Employer Name", "type": "text", "required": true },
+          { "name": "jobTitle", "label": "Job Title", "type": "text", "required": true },
+          { "name": "yearsAtJob", "label": "Years at Current Job", "type": "number", "required": true },
+          { "name": "monthlyGrossIncome", "label": "Monthly Gross Income ($)", "type": "number", "required": true },
+          { "name": "monthlyRentMortgage", "label": "Monthly Housing Expense ($)", "type": "number", "required": true },
+          { "name": "requestedAmount", "label": "Requested Loan Amount ($)", "type": "number", "required": true },
+          { "name": "loanTermMonths", "label": "Loan Term (Months)", "type": "select", "required": true, "options": [{ "label": "12 Months", "value": "12" }, { "label": "36 Months", "value": "36" }, { "label": "60 Months", "value": "60" }] },
+          { "name": "collateralDescription", "label": "Collateral Description", "type": "text", "required": false }
+        ]
+      },
+      "expectedWizardSteps": [
+        "Personal & Contact",
+        "Employment & Income",
+        "Expenses & Liabilities",
+        "Loan Terms & Review"
+      ],
+      "expectedComponentUsage": ["Card", "StepProgress", "Input", "Select", "Button"],
+      "expectedBehavior": "Decompose 13 fields into 4 distinct steps, preserving all field names and required validations.",
+      "testObjective": "Verify multi-field division and state persistence across high-field-count schemas."
+    },
+    {
+      "id": "TC-02",
+      "name": "KYC Verification",
+      "scenario": "Customer identity verification process requiring identity documents, biometric/residential checks, and compliance declarations.",
+      "input": {
+        "formName": "KYCVerification",
+        "description": "Standard anti-money laundering and customer due diligence verification form.",
+        "fields": [
+          { "name": "legalFullName", "label": "Full Legal Name", "type": "text", "required": true },
+          { "name": "birthDate", "label": "Date of Birth", "type": "date", "required": true },
+          { "name": "nationality", "label": "Nationality", "type": "select", "required": true, "options": [{ "label": "United States", "value": "US" }, { "label": "United Kingdom", "value": "UK" }, { "label": "India", "value": "IN" }, { "label": "Other", "value": "OTHER" }] },
+          { "name": "documentType", "label": "Document Type", "type": "select", "required": true, "options": [{ "label": "Passport", "value": "passport" }, { "label": "Driver License", "value": "license" }] },
+          { "name": "documentIdNumber", "label": "Document Identification Number", "type": "text", "required": true },
+          { "name": "documentExpiry", "label": "Document Expiry Date", "type": "date", "required": true },
+          { "name": "currentResidence", "label": "Current Residential Address", "type": "text", "required": true },
+          { "name": "pepDeclaration", "label": "Are you a Politically Exposed Person?", "type": "select", "required": true, "options": [{ "label": "No", "value": "no" }, { "label": "Yes", "value": "yes" }] }
+        ]
+      },
+      "expectedWizardSteps": [
+        "Individual Identity",
+        "Government ID",
+        "Residence & Compliance"
+      ],
+      "expectedComponentUsage": ["Card", "StepProgress", "Input", "Select", "Button"],
+      "expectedBehavior": "Group sensitive identity fields separately from compliance declaration, ensuring zero field drops.",
+      "testObjective": "Ensure sensitive compliance questions receive clear step distinction and validation."
+    },
+    {
+      "id": "TC-03",
+      "name": "Tax Filing",
+      "scenario": "Annual personal income tax assessment with gross salaries, investments, deductions, and banking routing.",
+      "input": {
+        "formName": "AnnualTaxFiling",
+        "description": "Income and deduction schedule for annual tax assessment.",
+        "fields": [
+          { "name": "taxpayerName", "label": "Taxpayer Full Name", "type": "text", "required": true },
+          { "name": "taxIdNumber", "label": "Taxpayer ID / SSN / PAN", "type": "text", "required": true },
+          { "name": "w2Wages", "label": "W-2 / Salary Income ($)", "type": "number", "required": true },
+          { "name": "interestIncome", "label": "Taxable Interest Income ($)", "type": "number", "required": false },
+          { "name": "deduction80C", "label": "Retirement & Savings Deductions ($)", "type": "number", "required": false },
+          { "name": "healthInsuranceDeduction", "label": "Health Insurance Deduction ($)", "type": "number", "required": false },
+          { "name": "totalTaxesWithheld", "label": "Taxes Already Withheld ($)", "type": "number", "required": true },
+          { "name": "routingNumber", "label": "Bank Routing Number", "type": "text", "required": true },
+          { "name": "accountNumber", "label": "Bank Account Number", "type": "text", "required": true }
+        ]
+      },
+      "expectedWizardSteps": [
+        "Taxpayer Credentials",
+        "Income Streams",
+        "Deductions & Credits",
+        "Bank Refund Coordinates"
+      ],
+      "expectedComponentUsage": ["Card", "StepProgress", "Input", "Button"],
+      "expectedBehavior": "Segment calculation fields into progressive logical stages.",
+      "testObjective": "Verify handling of numeric inputs, optional deductions, and sensitive routing fields."
+    },
+    {
+      "id": "TC-04",
+      "name": "Insurance Registration",
+      "scenario": "Health and vehicle policy subscription requiring policyholder vitals, vehicle VIN, coverage tiers, and emergency contacts.",
+      "input": {
+        "formName": "InsurancePolicyRegistration",
+        "description": "Policy registration and primary driver health and vehicle coverage profile.",
+        "fields": [
+          { "name": "policyholderName", "label": "Policyholder Full Name", "type": "text", "required": true },
+          { "name": "coverageType", "label": "Coverage Plan", "type": "select", "required": true, "options": [{ "label": "Comprehensive", "value": "comp" }, { "label": "Third Party Fire & Theft", "value": "tpft" }] },
+          { "name": "vehicleVin", "label": "Vehicle VIN", "type": "text", "required": true },
+          { "name": "vehicleYear", "label": "Vehicle Model Year", "type": "number", "required": true },
+          { "name": "preExistingConditions", "label": "Pre-existing Medical Conditions", "type": "text", "required": false },
+          { "name": "primaryPhysician", "label": "Primary Care Physician", "type": "text", "required": false },
+          { "name": "emergencyContactName", "label": "Emergency Contact Name", "type": "text", "required": true },
+          { "name": "emergencyContactPhone", "label": "Emergency Contact Phone", "type": "tel", "required": true }
+        ]
+      },
+      "expectedWizardSteps": [
+        "Plan Selection",
+        "Vehicle & Medical Details",
+        "Emergency Contacts"
+      ],
+      "expectedComponentUsage": ["Card", "StepProgress", "Input", "Select", "Button"],
+      "expectedBehavior": "Correctly place optional physician fields alongside mandatory emergency contact information.",
+      "testObjective": "Assess optional field tolerance and mixed category fields."
+    },
+    {
+      "id": "TC-05",
+      "name": "Bank Account Opening",
+      "scenario": "Retail banking enrollment with account tier choices, funding deposit amounts, and overdraft preferences.",
+      "input": {
+        "formName": "BankAccountEnrollment",
+        "description": "New customer checking/savings account creation form.",
+        "fields": [
+          { "name": "customerName", "label": "Full Name", "type": "text", "required": true },
+          { "name": "email", "label": "Email Address", "type": "email", "required": true },
+          { "name": "accountType", "label": "Account Tier", "type": "select", "required": true, "options": [{ "label": "Premier Checking", "value": "checking" }, { "label": "High Yield Savings", "value": "savings" }] },
+          { "name": "initialDeposit", "label": "Initial Deposit Amount ($)", "type": "number", "required": true },
+          { "name": "debitCardRequested", "label": "Order Physical Debit Card?", "type": "select", "required": true, "options": [{ "label": "Yes, dispatch card", "value": "yes" }, { "label": "Digital card only", "value": "no" }] },
+          { "name": "overdraftProtection", "label": "Opt-in to Overdraft Protection?", "type": "select", "required": true, "options": [{ "label": "Opt-in", "value": "in" }, { "label": "Decline", "value": "out" }] }
+        ]
+      },
+      "expectedWizardSteps": [
+        "Personal Details",
+        "Account Selection & Funding",
+        "Card & Preferences"
+      ],
+      "expectedComponentUsage": ["Card", "StepProgress", "Input", "Select", "Button"],
+      "expectedBehavior": "Short form kept compact without unnecessary extra steps.",
+      "testObjective": "Verify that small forms do not create over-fragmented step workflows."
+    },
+    {
+      "id": "TC-06",
+      "name": "Employee Onboarding",
+      "scenario": "New hire workplace intake collecting employee records, department routing, emergency contacts, and direct deposit info.",
+      "input": {
+        "formName": "EmployeeOnboarding",
+        "description": "Corporate HR onboarding and records registration form.",
+        "fields": [
+          { "name": "employeeName", "label": "Employee Name", "type": "text", "required": true },
+          { "name": "workEmail", "label": "Work Email", "type": "email", "required": true },
+          { "name": "startDate", "label": "Start Date", "type": "date", "required": true },
+          { "name": "department", "label": "Department", "type": "select", "required": true, "options": [{ "label": "Engineering", "value": "eng" }, { "label": "Product", "value": "prod" }, { "label": "Design", "value": "design" }, { "label": "Operations", "value": "ops" }] },
+          { "name": "emergencyContact", "label": "Emergency Contact Name & Phone", "type": "text", "required": true },
+          { "name": "tShirtSize", "label": "Welcome Kit T-Shirt Size", "type": "select", "required": false, "options": [{ "label": "Small", "value": "s" }, { "label": "Medium", "value": "m" }, { "label": "Large", "value": "l" }] },
+          { "name": "dietaryRestrictions", "label": "Dietary Restrictions", "type": "text", "required": false }
+        ]
+      },
+      "expectedWizardSteps": [
+        "Employment Credentials",
+        "Emergency Contacts",
+        "Preferences & Swag"
+      ],
+      "expectedComponentUsage": ["Card", "StepProgress", "Input", "Select", "Button"],
+      "expectedBehavior": "Preserve optional preferences at the final step while enforcing essential corporate records.",
+      "testObjective": "Test presence of non-critical perk fields alongside core corporate data."
+    },
+    {
+      "id": "TC-07",
+      "name": "Medical Registration",
+      "scenario": "Patient clinical intake form recording medical history, allergies, medication, and consent before appointment.",
+      "input": {
+        "formName": "PatientIntake",
+        "description": "Outpatient clinic intake and medical history questionnaire.",
+        "fields": [
+          { "name": "patientName", "label": "Patient Full Name", "type": "text", "required": true },
+          { "name": "dob", "label": "Date of Birth", "type": "date", "required": true },
+          { "name": "bloodGroup", "label": "Blood Group", "type": "select", "required": true, "options": [{ "label": "O+", "value": "O+" }, { "label": "A+", "value": "A+" }, { "label": "B+", "value": "B+" }, { "label": "AB+", "value": "AB+" }] },
+          { "name": "knownAllergies", "label": "Known Allergies (Food / Drugs)", "type": "text", "required": true },
+          { "name": "currentMedications", "label": "Current Medications", "type": "text", "required": false },
+          { "name": "primaryComplaint", "label": "Chief Complaint / Reason for Visit", "type": "text", "required": true },
+          { "name": "consentToTreatment", "label": "Consent to Clinical Examination", "type": "select", "required": true, "options": [{ "label": "I consent to standard medical evaluation", "value": "consented" }] }
+        ]
+      },
+      "expectedWizardSteps": [
+        "Patient Identity",
+        "Clinical History & Allergies",
+        "Chief Complaint & Consent"
+      ],
+      "expectedComponentUsage": ["Card", "StepProgress", "Input", "Select", "Button"],
+      "expectedBehavior": "Group patient background separately from current acute health complaints and consent.",
+      "testObjective": "Validate clinical intake field grouping and strict consent enforcement."
+    },
+    {
+      "id": "TC-08",
+      "name": "Credit Card Application",
+      "scenario": "Consumer revolving credit card application with strict credit bureau checks, income thresholds, and card tier options.",
+      "input": {
+        "formName": "CreditCardApplication",
+        "description": "Rewards credit card underwriting and credit evaluation application.",
+        "fields": [
+          { "name": "fullName", "label": "Applicant Name", "type": "text", "required": true },
+          { "name": "ssnLast4", "label": "Social Security Last 4 Digits", "type": "password", "required": true },
+          { "name": "annualIncome", "label": "Gross Annual Income ($)", "type": "number", "required": true },
+          { "name": "housingStatus", "label": "Housing Status", "type": "select", "required": true, "options": [{ "label": "Own", "value": "own" }, { "label": "Rent", "value": "rent" }, { "label": "Other", "value": "other" }] },
+          { "name": "monthlyHousingPayment", "label": "Monthly Rent / Mortgage ($)", "type": "number", "required": true },
+          { "name": "cardProduct", "label": "Desired Credit Card Tier", "type": "select", "required": true, "options": [{ "label": "Cashback Platinum", "value": "cashback" }, { "label": "Travel Infinite", "value": "travel" }] }
+        ]
+      },
+      "expectedWizardSteps": [
+        "Applicant Verification",
+        "Income & Housing",
+        "Product Selection & Terms"
+      ],
+      "expectedComponentUsage": ["Card", "StepProgress", "Input", "Select", "Button"],
+      "expectedBehavior": "Support password-masked input type and financial validation without losing field metadata.",
+      "testObjective": "Validate password input rendering and financial ratio grouping."
+    },
+    {
+      "id": "TC-09",
+      "name": "Mortgage Application",
+      "scenario": "High-complexity residential real estate financing intake with co-borrowers, property details, and loan structures.",
+      "input": {
+        "formName": "MortgageApplication",
+        "description": "Residential home purchase loan application with appraisal and escrow details.",
+        "fields": [
+          { "name": "primaryBorrower", "label": "Primary Borrower Name", "type": "text", "required": true },
+          { "name": "propertyAddress", "label": "Subject Property Address", "type": "text", "required": true },
+          { "name": "propertyType", "label": "Property Type", "type": "select", "required": true, "options": [{ "label": "Single Family Home", "value": "single_family" }, { "label": "Condo / Townhouse", "value": "condo" }] },
+          { "name": "purchasePrice", "label": "Estimated Purchase Price ($)", "type": "number", "required": true },
+          { "name": "downPaymentAmount", "label": "Down Payment Amount ($)", "type": "number", "required": true },
+          { "name": "loanType", "label": "Loan Program", "type": "select", "required": true, "options": [{ "label": "30-Year Fixed", "value": "30_fixed" }, { "label": "15-Year Fixed", "value": "15_fixed" }, { "label": "5/1 ARM", "value": "arm" }] },
+          { "name": "coBorrowerName", "label": "Co-Borrower Name (if applicable)", "type": "text", "required": false },
+          { "name": "hasBankruptcyHistory", "label": "Bankruptcy or Foreclosure in Past 7 Years?", "type": "select", "required": true, "options": [{ "label": "No", "value": "no" }, { "label": "Yes", "value": "yes" }] }
+        ]
+      },
+      "expectedWizardSteps": [
+        "Borrower & Property",
+        "Financing & Down Payment",
+        "Underwriting Disclosures"
+      ],
+      "expectedComponentUsage": ["Card", "StepProgress", "Input", "Select", "Button"],
+      "expectedBehavior": "Organize large-value financing questions cleanly with responsive two-column grid support.",
+      "testObjective": "Test deep financial form step logic with co-borrower optionality."
+    },
+    {
+      "id": "TC-10",
+      "name": "Business Registration",
+      "scenario": "Commercial enterprise entity registration with corporate officers, EIN, industry classification, and registered agent.",
+      "input": {
+        "formName": "BusinessEntityRegistration",
+        "description": "State corporate formation and legal entity registration document.",
+        "fields": [
+          { "name": "entityLegalName", "label": "Legal Entity Name", "type": "text", "required": true },
+          { "name": "entityStructure", "label": "Entity Structure", "type": "select", "required": true, "options": [{ "label": "LLC (Limited Liability Company)", "value": "llc" }, { "label": "C-Corporation", "value": "c_corp" }, { "label": "Non-Profit Corporation", "value": "non_profit" }] },
+          { "name": "einNumber", "label": "Federal Employer Identification Number (FEIN/EIN)", "type": "text", "required": true },
+          { "name": "registeredAgentName", "label": "Registered Agent Full Name", "type": "text", "required": true },
+          { "name": "registeredAgentAddress", "label": "Registered Agent Physical Address", "type": "text", "required": true },
+          { "name": "businessActivityCode", "label": "NAICS / Industry Sector Code", "type": "text", "required": true },
+          { "name": "operatingAgreementSigned", "label": "Operating Agreement Adopted", "type": "select", "required": true, "options": [{ "label": "Adopted by Board/Members", "value": "adopted" }, { "label": "Pending Adoption", "value": "pending" }] }
+        ]
+      },
+      "expectedWizardSteps": [
+        "Corporate Identity",
+        "Registered Agent",
+        "Governance & Compliance"
+      ],
+      "expectedComponentUsage": ["Card", "StepProgress", "Input", "Select", "Button"],
+      "expectedBehavior": "Produce a 3-step legal registration sequence with strict field preservation.",
+      "testObjective": "Verify commercial entity formation schema preservation and validation rules."
+    }
+  ]
+}

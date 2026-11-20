@@ -28,8 +28,14 @@ export async function generateComponent({
 
   if (USE_TEAMMATE_CODEGEN) {
     try {
-      // Dynamic import avoids startup crash before teammate's module is merged into /backend/src/codegen/
-      const teammateModule = await import("../codegen/agent.js");
+      // Dynamic import attempts backend/src/codegen/agent.js or root src/agent.js
+      let teammateModule;
+      try {
+        teammateModule = await import("../codegen/agent.js");
+      } catch {
+        teammateModule = await import("../../../src/agent.js");
+      }
+
       if (typeof teammateModule.generateComponent === "function") {
         console.log("[CodeGenService] Using teammate's LangChain generateComponent() pipeline.");
         return await teammateModule.generateComponent({
