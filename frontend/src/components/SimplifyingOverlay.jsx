@@ -33,14 +33,20 @@ export default function SimplifyingOverlay({ activeField = "annualIncome", onDis
           </div>
         </div>
 
-        {/* Required Message Text */}
-        <h3 className="relative text-xl sm:text-2xl font-extrabold tracking-tight text-white mb-2">
-          Simplifying this for you...
-        </h3>
+        {/* Required Message Text per Task 2 Requirements */}
+        <div className="mb-3">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-[0_0_10px_rgba(244,63,94,0.3)] mb-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-ping" />
+            AuraGen detected interaction difficulty.
+          </span>
+          <h3 className="relative text-2xl font-black tracking-tight text-white">
+            Simplifying your experience...
+          </h3>
+        </div>
 
-        <p className="relative text-xs sm:text-sm text-indigo-200/90 leading-relaxed mb-4">
-          High cognitive friction detected on <span className="text-white font-semibold underline decoration-indigo-400">{formattedField}</span>.
-          Transforming the complex form into a guided conversational assistant.
+        <p className="relative text-xs sm:text-sm text-indigo-200/90 leading-relaxed mb-5">
+          Interaction friction detected on <span className="text-white font-semibold underline decoration-indigo-400">{formattedField}</span>.
+          Seamlessly transforming into an intelligent conversational assistant with all input preserved.
         </p>
 
         {/* Animated Loading Bar */}
