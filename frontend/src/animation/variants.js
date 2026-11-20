@@ -6,7 +6,7 @@
  * - Scale down
  * - Slide in (Up, Down, Left, Right)
  * - Spring transitions
- * - Form morphing & overlay transitions
+ * - Dynamic Form to Wizard Morphing & overlay transitions
  */
 
 /**
@@ -66,7 +66,7 @@ export const scaleDown = {
   exit: {
     opacity: 0,
     scale: 0.94,
-    transition: { duration: 0.22, ease: [0.32, 0, 0.67, 0] }
+    transition: { duration: 0.35, ease: [0.32, 0, 0.67, 0] } // 350ms duration (within 300-400ms range)
   }
 };
 
@@ -155,31 +155,91 @@ export const formMorphVariant = {
   },
   exit: {
     opacity: 0,
-    scale: 0.96,
+    scale: 0.94,
     y: -12,
     transition: {
-      duration: 0.2,
-      ease: "easeInOut"
+      duration: 0.35, // 350ms: perfectly within the 300-400ms requirement
+      ease: [0.32, 0, 0.67, 0]
     }
   }
 };
 
 /**
- * Fullscreen / modal overlay variant (for "Simplifying this for you..." notification)
+ * Original Complex Form Exit Variant:
+ * Fades out and scales down with a calibrated 350ms duration (approx 300-400ms).
  */
-export const overlayVariant = {
-  initial: { opacity: 0, backdropFilter: "blur(0px)" },
+export const originalFormMorphVariant = {
+  initial: {
+    opacity: 1,
+    scale: 1,
+    y: 0
+  },
   animate: {
     opacity: 1,
-    backdropFilter: "blur(8px)",
+    scale: 1,
+    y: 0,
+    transition: { duration: 0.35, ease: [0.16, 1, 0.3, 1] }
+  },
+  exit: {
+    opacity: 0,
+    scale: 0.94,
+    y: -8,
+    transition: {
+      duration: 0.35, // 350ms: perfectly within the 300-400ms requirement
+      ease: [0.32, 0, 0.67, 0]
+    }
+  }
+};
+
+/**
+ * Generated Conversational Wizard Enter Variant:
+ * Fades in and slides into view using a fluid spring transition.
+ */
+export const wizardMorphVariant = {
+  initial: {
+    opacity: 0,
+    scale: 0.96,
+    y: 24
+  },
+  animate: {
+    opacity: 1,
+    scale: 1,
+    y: 0,
+    transition: {
+      opacity: { duration: 0.3, ease: "easeOut" },
+      scale: springTransition,
+      y: springTransition
+    }
+  },
+  exit: {
+    opacity: 0,
+    scale: 0.96,
+    y: 20,
+    transition: { duration: 0.25, ease: "easeIn" }
+  }
+};
+
+/**
+ * "Simplifying this for you..." short modal overlay variant
+ */
+export const simplifyingOverlayVariant = {
+  initial: {
+    opacity: 0,
+    scale: 0.92
+  },
+  animate: {
+    opacity: 1,
+    scale: 1,
     transition: { duration: 0.28, ease: "easeOut" }
   },
   exit: {
     opacity: 0,
-    backdropFilter: "blur(0px)",
-    transition: { duration: 0.2, ease: "easeIn" }
+    scale: 1.04,
+    transition: { duration: 0.22, ease: "easeIn" }
   }
 };
+
+export const overlayVariant = simplifyingOverlayVariant;
 
 /**
  * Staggered container variant for multi-field lists and cards
