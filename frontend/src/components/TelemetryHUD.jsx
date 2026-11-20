@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React from "react";
+import CognitiveScoreGauge from "./CognitiveScoreGauge.jsx";
+import TelemetryAnalyticsChart from "./TelemetryAnalyticsChart.jsx";
 
 const STATUS_BADGE = {
   connected: {
@@ -41,7 +43,8 @@ export default function TelemetryHUD({
   onSimulateSpike,
   onResetTelemetry,
   receivedComponentCount,
-  onOpenCodeDrawer
+  onOpenCodeDrawer,
+  analyticsSummary
 }) {
   const isDevelopment = process.env.NODE_ENV !== "production";
   const badge = STATUS_BADGE[wsStatus] || STATUS_BADGE.disconnected;
@@ -71,91 +74,55 @@ export default function TelemetryHUD({
   const normClickErrors = normalizedMetrics.clickErrorRate ?? 0;
   const normDirection = normalizedMetrics.directionChanges ?? 0;
 
-  // Build SVG Sparkline chart path for Cognitive Load Score over time
-  const sparklineData = useMemo(() => {
-    if (!telemetryHistory || telemetryHistory.length === 0) {
-      return { path: "", area: "", points: [], thresholdY: 60 };
-    }
-
-    const width = 320;
-    const height = 75;
-    const padding = 6;
-    const innerWidth = width - padding * 2;
-    const innerHeight = height - padding * 2;
-
-    const points = telemetryHistory.map((item, idx) => {
-      const x =
-        padding +
-        (idx / Math.max(1, telemetryHistory.length - 1)) * innerWidth;
-      const score = Math.max(0, Math.min(100, item.score ?? 0));
-      const y = padding + innerHeight - (score / 100) * innerHeight;
-      return { x, y, score };
-    });
-
-    const thresholdY = padding + innerHeight - (threshold / 100) * innerHeight;
-
-    const path = points.reduce((acc, pt, idx) => {
-      return idx === 0 ? `M ${pt.x} ${pt.y}` : `${acc} L ${pt.x} ${pt.y}`;
-    }, "");
-
-    const firstX = points[0]?.x ?? padding;
-    const lastX = points[points.length - 1]?.x ?? width - padding;
-    const bottomY = height - padding;
-    const area = `${path} L ${lastX} ${bottomY} L ${firstX} ${bottomY} Z`;
-
-    return { path, area, points, thresholdY, width, height };
-  }, [telemetryHistory, threshold]);
-
   return (
-    <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950/90 text-slate-100 rounded-3xl border border-indigo-500/25 shadow-2xl p-5 sm:p-6 mb-8 backdrop-blur-xl transition-all">
+    <div className="relative overflow-hidden bg-[#080B16] text-slate-100 rounded-3xl border border-indigo-500/30 shadow-[0_0_50px_rgba(8,11,22,0.8)] p-5 sm:p-7 mb-8 backdrop-blur-2xl transition-all">
       {/* Ambient background glows */}
-      <div className="absolute -top-28 -left-28 w-80 h-80 bg-indigo-500/15 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-28 -right-28 w-80 h-80 bg-rose-500/15 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -top-32 -left-32 w-96 h-96 bg-[#8057FF]/15 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-[#25D9E8]/10 rounded-full blur-3xl pointer-events-none" />
 
       {/* Top Header: Identity, Status Badges, Threshold Indicator */}
       <div className="relative flex flex-wrap items-center justify-between gap-4 pb-5 border-b border-slate-800/80">
         <div className="flex items-center space-x-3.5">
-          <div className="h-11 w-11 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-500 border border-indigo-400/40 flex items-center justify-center text-white font-extrabold text-base shadow-lg shadow-indigo-500/30">
+          <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-[#8057FF] to-[#25D9E8] border border-indigo-400/40 flex items-center justify-center text-white font-black text-lg shadow-lg shadow-indigo-500/30">
             AG
           </div>
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-base font-bold tracking-tight text-white flex items-center gap-2">
-                AuraGen Telemetry & Friction Engine
-                <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+              <h2 className="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-2">
+                AuraGen Cognitive Telemetry Engine
+                <span className="text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
                   Week 2 Calibrated
                 </span>
               </h2>
 
-              {/* Requirement 7: Show whether confusion threshold has been reached */}
               {isThresholdReached ? (
                 <span className="inline-flex items-center px-3 py-0.5 rounded-full text-[11px] font-extrabold bg-rose-500/20 text-rose-300 border border-rose-500/60 shadow-[0_0_14px_rgba(244,63,94,0.5)] animate-pulse">
                   <span className="w-1.5 h-1.5 rounded-full bg-rose-400 mr-1.5 animate-ping" />
-                  THRESHOLD REACHED (CONFUSED)
+                  FRICTION THRESHOLD EXCEEDED
                 </span>
               ) : (
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-950/60 text-emerald-400 border border-emerald-500/30">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5" />
-                  THRESHOLD NOT REACHED (NORMAL)
+                  OPTIMAL COGNITIVE CADENCE
                 </span>
               )}
             </div>
-            <p className="text-xs text-slate-400 mt-0.5 flex flex-wrap items-center gap-2">
-              <span>Streaming real-time 10s rolling telemetry</span>
+            <p className="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-2">
+              <span>10s Rolling Window</span>
               <span className="text-slate-600">•</span>
-              <span>Dev Simulator Ready</span>
+              <span>Exponential Smoothing (α=0.35)</span>
               <span className="text-slate-600">•</span>
-              <span className="text-indigo-400 font-medium">Auto-Healing Pipeline</span>
+              <span className="text-cyan-400 font-medium">Real-time Self-Healing</span>
             </p>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           {/* Active Field indicator badge */}
-          <div className="inline-flex items-center px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-900/90 text-indigo-300 border border-indigo-500/20 shadow-inner">
+          <div className="inline-flex items-center px-3 py-1.5 rounded-xl text-xs font-medium bg-[#11172A] text-indigo-300 border border-indigo-500/20 shadow-inner">
             <span className="text-slate-400 mr-1.5 text-[11px] uppercase tracking-wider">Field:</span>
-            <span className="font-semibold text-white truncate max-w-[130px]">
-              {activeField || "None"}
+            <span className="font-semibold text-white truncate max-w-[140px]">
+              {activeField || "General"}
             </span>
           </div>
 
@@ -181,7 +148,7 @@ export default function TelemetryHUD({
           ) : (
             <div className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-indigo-950/40 text-indigo-300/90 border border-indigo-500/20">
               <span className="w-2 h-2 rounded-full bg-indigo-400" />
-              <span>Trigger: Ready</span>
+              <span>Trigger: Armed</span>
             </div>
           )}
 
@@ -221,80 +188,157 @@ export default function TelemetryHUD({
       </div>
 
       {/* Main Telemetry Cockpit Grid */}
-      <div className="relative grid grid-cols-1 lg:grid-cols-12 gap-5 pt-5 items-center">
-        {/* Requirement 6: Display Cognitive Load Score in real time with gauge */}
-        <div className="lg:col-span-4 bg-slate-900/70 p-4 rounded-2xl border border-slate-800/90 backdrop-blur-sm space-y-3">
-          <div className="flex items-center justify-between text-xs">
-            <div>
-              <span className="text-slate-300 font-bold block text-xs tracking-wide">
-                Cognitive Load Score
-              </span>
-              <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-400">
-                <span>Threshold: <strong className="text-indigo-300">{threshold}</strong></span>
-                <span>•</span>
-                <span>Raw: <strong className="text-slate-300">{rawScore}</strong></span>
+      <div className="relative grid grid-cols-1 lg:grid-cols-12 gap-5 pt-6 items-stretch">
+        {/* Task 2: Large Circular Cognitive Load Score Card */}
+        <div className="lg:col-span-4 flex flex-col">
+          <CognitiveScoreGauge
+            score={cognitiveLoadScore}
+            rawScore={rawScore}
+            threshold={threshold}
+            isTriggered={isTriggered}
+            simulationMode={simulationMode}
+            hasMinimumActivity={hasMinimumActivity}
+            cooldownActive={isCooldownActive}
+            cooldownRemaining={cooldownRemaining}
+          />
+        </div>
+
+        {/* Task 1 & 5: 5-Metric Normalized Cockpit Cards + Threshold Selector */}
+        <div className="lg:col-span-4 flex flex-col justify-between space-y-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 gap-2 text-center">
+            {/* Metric 1: Velocity Variance (25% weight) */}
+            <div className="bg-[#11172A]/85 hover:bg-[#171E33] rounded-2xl p-3 border border-slate-800 transition-all hover:border-indigo-500/40 group flex flex-col justify-between">
+              <div>
+                <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400 group-hover:text-indigo-300 transition-colors">
+                  Velocity Variance (25%)
+                </div>
+                <div className="text-base font-extrabold text-white mt-1">
+                  ±{velocityStdDev}
+                  <span className="text-[9px] text-slate-400 font-normal ml-0.5">px/s</span>
+                </div>
+                <div className="text-[10px] text-indigo-400 font-medium truncate mt-0.5">
+                  {normVariance}% norm
+                </div>
+              </div>
+              <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-2">
+                <div
+                  className="h-full bg-indigo-500 rounded-full transition-all duration-300"
+                  style={{ width: `${normVariance}%` }}
+                />
               </div>
             </div>
-            <div className="text-right">
-              <span
-                className={`font-black text-2xl tracking-tight transition-colors duration-300 ${
-                  isThresholdReached
-                    ? "text-rose-400 drop-shadow-[0_0_10px_rgba(244,63,94,0.6)]"
-                    : cognitiveLoadScore > threshold * 0.6
-                    ? "text-amber-400"
-                    : "text-emerald-400"
-                }`}
-              >
-                {cognitiveLoadScore}
-              </span>
-              <span className="text-xs text-slate-400 ml-1">/ 100</span>
+
+            {/* Metric 2: Hesitation (25% weight) */}
+            <div className="bg-[#11172A]/85 hover:bg-[#171E33] rounded-2xl p-3 border border-slate-800 transition-all hover:border-indigo-500/40 group flex flex-col justify-between">
+              <div>
+                <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400 group-hover:text-indigo-300 transition-colors">
+                  Hesitation (25%)
+                </div>
+                <div className="text-base font-extrabold text-white mt-1">
+                  {((metrics.hesitationMs ?? 0) / 1000).toFixed(1)}s
+                </div>
+                <div className="text-[10px] text-indigo-400 font-medium truncate mt-0.5">
+                  {normHesitation}% norm
+                </div>
+              </div>
+              <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-2">
+                <div
+                  className="h-full bg-indigo-500 rounded-full transition-all duration-300"
+                  style={{ width: `${normHesitation}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Metric 3: Rage Clicks (20% weight) */}
+            <div className="bg-[#11172A]/85 hover:bg-[#171E33] rounded-2xl p-3 border border-slate-800 transition-all hover:border-rose-500/40 group flex flex-col justify-between">
+              <div>
+                <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400 group-hover:text-rose-300 transition-colors">
+                  Rage Clicks (20%)
+                </div>
+                <div
+                  className={`text-base font-extrabold mt-1 ${
+                    (metrics.rageClicks ?? 0) > 0 ? "text-rose-400" : "text-white"
+                  }`}
+                >
+                  {metrics.rageClicks ?? 0}
+                </div>
+                <div className="text-[10px] text-rose-400 font-medium truncate mt-0.5">
+                  {normRageClicks}% norm
+                </div>
+              </div>
+              <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-2">
+                <div
+                  className="h-full bg-rose-500 rounded-full transition-all duration-300"
+                  style={{ width: `${normRageClicks}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Metric 4: Click Error Rate (10% weight) */}
+            <div className="bg-[#11172A]/85 hover:bg-[#171E33] rounded-2xl p-3 border border-slate-800 transition-all hover:border-rose-500/40 group flex flex-col justify-between">
+              <div>
+                <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400 group-hover:text-rose-300 transition-colors">
+                  Error Rate (10%)
+                </div>
+                <div
+                  className={`text-base font-extrabold mt-1 ${
+                    (metrics.clickErrorRate ?? 0) > 0.2 ? "text-rose-400" : "text-white"
+                  }`}
+                >
+                  {Math.round((metrics.clickErrorRate ?? 0) * 100)}%
+                </div>
+                <div className="text-[10px] text-rose-400 font-medium truncate mt-0.5">
+                  {normClickErrors}% norm
+                </div>
+              </div>
+              <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-2">
+                <div
+                  className="h-full bg-rose-500 rounded-full transition-all duration-300"
+                  style={{ width: `${normClickErrors}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Metric 5: Direction Changes (20% weight) */}
+            <div className="bg-[#11172A]/85 hover:bg-[#171E33] rounded-2xl p-3 border border-slate-800 transition-all hover:border-indigo-500/40 group flex flex-col justify-between col-span-2 sm:col-span-1 lg:col-span-2">
+              <div className="flex items-center justify-between">
+                <div className="text-left">
+                  <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400 group-hover:text-indigo-300 transition-colors">
+                    Direction Changes (20%)
+                  </div>
+                  <div className="text-base font-extrabold text-indigo-300 mt-0.5">
+                    {metrics.directionChanges ?? 0} changes
+                  </div>
+                </div>
+                <div className="text-[10px] text-indigo-400 font-semibold">
+                  {normDirection}% norm
+                </div>
+              </div>
+              <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-2">
+                <div
+                  className="h-full bg-indigo-500 rounded-full transition-all duration-300"
+                  style={{ width: `${normDirection}%` }}
+                />
+              </div>
             </div>
           </div>
 
-          {/* Smooth score progress bar with target threshold marker */}
-          <div className="relative w-full h-3.5 bg-slate-800/90 rounded-full overflow-hidden p-0.5 border border-slate-700/60 shadow-inner">
-            <div
-              className={`h-full rounded-full transition-all duration-500 ease-out ${
-                isThresholdReached
-                  ? "bg-gradient-to-r from-amber-500 to-rose-500 shadow-[0_0_12px_rgba(244,63,94,0.8)]"
-                  : cognitiveLoadScore > threshold * 0.6
-                  ? "bg-gradient-to-r from-emerald-500 to-amber-500"
-                  : "bg-gradient-to-r from-emerald-600 to-emerald-400"
-              }`}
-              style={{ width: `${Math.min(100, cognitiveLoadScore)}%` }}
-            />
-            <div
-              className="absolute top-0 bottom-0 w-1 bg-white shadow-[0_0_6px_rgba(255,255,255,0.95)] rounded-full z-10"
-              style={{ left: `${Math.min(100, Math.max(0, threshold))}%` }}
-              title={`Trigger Threshold: ${threshold}`}
-            />
-          </div>
-
-          <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5">
-            <span className="flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Optimal Flow
-            </span>
-            <span className="flex items-center gap-1 text-slate-400">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> Friction
-            </span>
-            <span className="flex items-center gap-1 text-rose-400 font-semibold">
-              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> Self-Healing
-            </span>
-          </div>
-
-          {/* Configurable Threshold Selector for Testing */}
+          {/* Configurable Threshold Selector */}
           {onThresholdChange && (
-            <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between text-xs">
-              <span className="text-[11px] text-slate-400">Test Threshold:</span>
+            <div className="p-3 bg-[#11172A]/90 rounded-2xl border border-slate-800 flex items-center justify-between text-xs">
+              <div>
+                <span className="font-bold text-slate-300 block text-xs">Trigger Threshold</span>
+                <span className="text-[10px] text-slate-400">Score &gt;= threshold invokes code-gen</span>
+              </div>
               <div className="flex items-center gap-1.5">
                 {[50, 70, 85].map((lvl) => (
                   <button
                     key={lvl}
                     type="button"
                     onClick={() => onThresholdChange(lvl)}
-                    className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
                       threshold === lvl
-                        ? "bg-indigo-600 text-white shadow-sm"
+                        ? "bg-[#8057FF] text-white shadow-md shadow-indigo-600/40 scale-105"
                         : "bg-slate-800 text-slate-400 hover:text-white"
                     }`}
                   >
@@ -306,231 +350,34 @@ export default function TelemetryHUD({
           )}
         </div>
 
-        {/* 5-Metric Normalized Cockpit Cards: Variance, Hesitation, Rage Clicks, Click Errors, Direction */}
-        <div className="lg:col-span-4 grid grid-cols-3 sm:grid-cols-5 gap-2 text-center">
-          {/* Card 1: Velocity Variance (25% weight) */}
-          <div className="bg-slate-900/80 hover:bg-slate-800/80 rounded-2xl p-2 border border-slate-800 transition-all hover:border-indigo-500/40 group flex flex-col justify-between">
-            <div>
-              <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400 group-hover:text-indigo-300 transition-colors">
-                Variance
-              </div>
-              <div className="text-sm font-extrabold text-white mt-1">
-                ±{velocityStdDev}
-                <span className="text-[8px] text-slate-400 font-normal ml-0.5">px/s</span>
-              </div>
-              <div className="text-[9px] text-indigo-400/90 font-medium truncate mt-0.5">
-                {normVariance}% norm
-              </div>
-            </div>
-            <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-1.5">
-              <div
-                className="h-full bg-indigo-500 rounded-full transition-all duration-300"
-                style={{ width: `${normVariance}%` }}
-              />
-            </div>
-          </div>
-
-          {/* Card 2: Hesitation (25% weight) */}
-          <div className="bg-slate-900/80 hover:bg-slate-800/80 rounded-2xl p-2 border border-slate-800 transition-all hover:border-indigo-500/40 group flex flex-col justify-between">
-            <div>
-              <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400 group-hover:text-indigo-300 transition-colors">
-                Hesitation
-              </div>
-              <div className="text-sm font-extrabold text-white mt-1">
-                {((metrics.hesitationMs ?? 0) / 1000).toFixed(1)}s
-              </div>
-              <div className="text-[9px] text-indigo-400/90 font-medium truncate mt-0.5">
-                {normHesitation}% norm
-              </div>
-            </div>
-            <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-1.5">
-              <div
-                className="h-full bg-indigo-500 rounded-full transition-all duration-300"
-                style={{ width: `${normHesitation}%` }}
-              />
-            </div>
-          </div>
-
-          {/* Card 3: Rage Clicks (20% weight) */}
-          <div className="bg-slate-900/80 hover:bg-slate-800/80 rounded-2xl p-2 border border-slate-800 transition-all hover:border-rose-500/40 group flex flex-col justify-between">
-            <div>
-              <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400 group-hover:text-rose-300 transition-colors">
-                Rage Clicks
-              </div>
-              <div
-                className={`text-sm font-extrabold mt-1 ${
-                  (metrics.rageClicks ?? 0) > 0 ? "text-rose-400" : "text-white"
-                }`}
-              >
-                {metrics.rageClicks ?? 0}
-              </div>
-              <div className="text-[9px] text-rose-400/90 font-medium truncate mt-0.5">
-                {normRageClicks}% norm
-              </div>
-            </div>
-            <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-1.5">
-              <div
-                className="h-full bg-rose-500 rounded-full transition-all duration-300"
-                style={{ width: `${normRageClicks}%` }}
-              />
-            </div>
-          </div>
-
-          {/* Card 4: Click Error Rate (10% weight) */}
-          <div className="bg-slate-900/80 hover:bg-slate-800/80 rounded-2xl p-2 border border-slate-800 transition-all hover:border-rose-500/40 group flex flex-col justify-between">
-            <div>
-              <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400 group-hover:text-rose-300 transition-colors">
-                Errors
-              </div>
-              <div
-                className={`text-sm font-extrabold mt-1 ${
-                  (metrics.clickErrorRate ?? 0) > 0.2 ? "text-rose-400" : "text-white"
-                }`}
-              >
-                {Math.round((metrics.clickErrorRate ?? 0) * 100)}%
-              </div>
-              <div className="text-[9px] text-rose-400/90 font-medium truncate mt-0.5">
-                {normClickErrors}% norm
-              </div>
-            </div>
-            <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-1.5">
-              <div
-                className="h-full bg-rose-500 rounded-full transition-all duration-300"
-                style={{ width: `${normClickErrors}%` }}
-              />
-            </div>
-          </div>
-
-          {/* Card 5: Direction Changes (20% weight) */}
-          <div className="bg-slate-900/80 hover:bg-slate-800/80 rounded-2xl p-2 border border-slate-800 transition-all hover:border-indigo-500/40 group flex flex-col justify-between">
-            <div>
-              <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400 group-hover:text-indigo-300 transition-colors">
-                Direction
-              </div>
-              <div className="text-sm font-extrabold text-indigo-300 mt-1">
-                {metrics.directionChanges ?? 0}
-              </div>
-              <div className="text-[9px] text-indigo-400/90 font-medium truncate mt-0.5">
-                {normDirection}% norm
-              </div>
-            </div>
-            <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-1.5">
-              <div
-                className="h-full bg-indigo-500 rounded-full transition-all duration-300"
-                style={{ width: `${normDirection}%` }}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Real-time Telemetry Timeline Chart */}
-        <div className="lg:col-span-4 bg-slate-900/70 p-3 rounded-2xl border border-slate-800/90 backdrop-blur-sm flex flex-col justify-between h-full">
-          <div className="flex items-center justify-between text-xs pb-1 border-b border-slate-800/60">
-            <span className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
-              Live Cognitive Load Timeline
-            </span>
-            <span className="text-[10px] text-slate-400">
-              {telemetryHistory.length} sec buffer
-            </span>
-          </div>
-
-          {/* SVG Sparkline Area Chart */}
-          <div className="relative w-full h-[68px] my-1 flex items-center justify-center overflow-hidden">
-            {sparklineData.points.length > 1 ? (
-              <svg
-                viewBox={`0 0 ${sparklineData.width || 320} ${sparklineData.height || 75}`}
-                className="w-full h-full overflow-visible"
-                preserveAspectRatio="none"
-              >
-                <defs>
-                  <linearGradient id="scoreGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop
-                      offset="0%"
-                      stopColor={isThresholdReached ? "#f43f5e" : "#6366f1"}
-                      stopOpacity="0.4"
-                    />
-                    <stop
-                      offset="100%"
-                      stopColor={isThresholdReached ? "#f43f5e" : "#6366f1"}
-                      stopOpacity="0.0"
-                    />
-                  </linearGradient>
-                </defs>
-
-                {/* Threshold line */}
-                <line
-                  x1="0"
-                  y1={sparklineData.thresholdY}
-                  x2={sparklineData.width || 320}
-                  y2={sparklineData.thresholdY}
-                  stroke="#fb7185"
-                  strokeWidth="1.5"
-                  strokeDasharray="4 3"
-                  opacity="0.8"
-                />
-
-                {/* Area fill */}
-                <path d={sparklineData.area} fill="url(#scoreGradient)" />
-
-                {/* Line stroke */}
-                <path
-                  d={sparklineData.path}
-                  fill="none"
-                  stroke={isThresholdReached ? "#f43f5e" : "#818cf8"}
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-
-                {/* Latest point dot */}
-                {sparklineData.points.length > 0 && (
-                  <circle
-                    cx={sparklineData.points[sparklineData.points.length - 1].x}
-                    cy={sparklineData.points[sparklineData.points.length - 1].y}
-                    r="4"
-                    fill={isThresholdReached ? "#f43f5e" : "#a5b4fc"}
-                    className="drop-shadow-[0_0_6px_rgba(244,63,94,0.8)]"
-                  />
-                )}
-              </svg>
-            ) : (
-              <div className="text-[11px] text-slate-500 flex items-center justify-center h-full">
-                Sampling real-time telemetry stream...
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-800/60">
-            <span className="text-rose-400/90 font-medium">--- Threshold ({threshold})</span>
-            {onExportCSV && (
-              <button
-                type="button"
-                onClick={onExportCSV}
-                className="text-[10px] text-indigo-400 hover:text-indigo-300 font-semibold underline underline-offset-2 transition-colors"
-                title="Download full telemetry time-series as CSV"
-              >
-                Export CSV Report
-              </button>
-            )}
-          </div>
+        {/* Task 4: Real-time Telemetry Analytics Chart */}
+        <div className="lg:col-span-4 flex flex-col">
+          <TelemetryAnalyticsChart
+            telemetryHistory={telemetryHistory}
+            threshold={threshold}
+            activeField={activeField}
+            metrics={metrics}
+            normalizedMetrics={normalizedMetrics}
+            analyticsSummary={analyticsSummary}
+            onExportCSV={onExportCSV}
+          />
         </div>
       </div>
 
-      {/* Requirement 5 & 9: Development-Only Confusion Simulator Controls */}
-      <div className="relative mt-5 pt-4 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3">
+      {/* Task 3: Interactive Confusion Simulator Controls */}
+      <div className="relative mt-6 pt-5 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-            <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30">
-              Dev Only
+            <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30">
+              Interactive Dev Lab
             </span>
             Telemetry Simulator:
           </span>
           {simulationMode !== "idle" && (
             <span
-              className={`text-[11px] font-bold px-2 py-0.5 rounded-full border animate-pulse ${
+              className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border animate-pulse ${
                 simulationMode === "confused"
-                  ? "bg-rose-950 text-rose-300 border-rose-500/50"
+                  ? "bg-rose-950 text-rose-300 border-rose-500/50 shadow-[0_0_10px_rgba(244,63,94,0.4)]"
                   : "bg-emerald-950 text-emerald-300 border-emerald-500/50"
               }`}
             >
@@ -539,7 +386,7 @@ export default function TelemetryHUD({
           )}
           {!isDevelopment && (
             <span className="text-[10px] text-slate-500 italic">
-              (Controls disabled in production)
+              (Simulator controls disabled in production)
             </span>
           )}
         </div>

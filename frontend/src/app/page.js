@@ -174,6 +174,7 @@ export default function AuraGenDemoPage() {
     hasMinimumActivity,
     telemetrySnapshot,
     telemetryHistory,
+    analyticsSummary,
     simulationMode,
     startConfusionSimulation,
     startCalmSimulation,
@@ -325,6 +326,7 @@ export default function AuraGenDemoPage() {
         onResetTelemetry={handleManualReset}
         receivedComponentCount={receivedComponents.length}
         onOpenCodeDrawer={() => setIsDrawerOpen(true)}
+        analyticsSummary={analyticsSummary}
       />
 
       {/* Requirement 1: Visible Persistent "Back to Original Form" Button when simplified mode is active */}
