@@ -242,6 +242,43 @@ export const simplifyingOverlayVariant = {
 export const overlayVariant = simplifyingOverlayVariant;
 
 /**
+ * Direction-aware Horizontal Slide variant for wizard step navigation.
+ * Forward (direction > 0): enters from right (+36px), exits to left (-36px).
+ * Backward (direction < 0): enters from left (-36px), exits to right (+36px).
+ * Respects prefers-reduced-motion by suppressing x-translation when reduced motion is requested.
+ */
+export const stepSlideVariant = {
+  initial: (custom = {}) => {
+    const direction = typeof custom === "number" ? custom : (custom?.direction ?? 1);
+    const reduceMotion = custom?.reduceMotion ?? false;
+    return {
+      x: reduceMotion ? 0 : direction > 0 ? 36 : -36,
+      opacity: 0
+    };
+  },
+  animate: {
+    x: 0,
+    opacity: 1,
+    transition: {
+      x: springTransition,
+      opacity: { duration: 0.22, ease: "easeOut" }
+    }
+  },
+  exit: (custom = {}) => {
+    const direction = typeof custom === "number" ? custom : (custom?.direction ?? 1);
+    const reduceMotion = custom?.reduceMotion ?? false;
+    return {
+      x: reduceMotion ? 0 : direction > 0 ? -36 : 36,
+      opacity: 0,
+      transition: {
+        x: { duration: 0.2, ease: "easeInOut" },
+        opacity: { duration: 0.18, ease: "easeIn" }
+      }
+    };
+  }
+};
+
+/**
  * Staggered container variant for multi-field lists and cards
  */
 export const staggerContainer = {

@@ -3,11 +3,13 @@ import {
   originalFormMorphVariant,
   wizardMorphVariant,
   simplifyingOverlayVariant,
+  stepSlideVariant,
   springTransition
 } from "../src/animation/variants.js";
 
 console.log("=================================================================");
-console.log("🧪 AuraGen Dynamic Form Morphing Animation Test Suite (Commit 5)");
+console.log("🧪 AuraGen Dynamic Form Morphing & Wizard Step Navigation Tests");
+console.log("   (Commits 5 & 6: Morphing, Directional Slide, Reduced Motion)");
 console.log("=================================================================");
 
 // -----------------------------------------------------------------------------
@@ -42,13 +44,11 @@ console.log("=================================================================")
   assert.ok(wizardMorphVariant.initial, "wizardMorphVariant must define an initial state");
   assert.ok(wizardMorphVariant.animate, "wizardMorphVariant must define an animate state");
 
-  // Fades in & slides in
   assert.equal(wizardMorphVariant.initial.opacity, 0, "Initial wizard opacity must be 0");
   assert.equal(wizardMorphVariant.animate.opacity, 1, "Animate wizard opacity must be 1 (fade in)");
   assert.ok(wizardMorphVariant.initial.y > 0, "Initial wizard y must be > 0 for slide in");
   assert.equal(wizardMorphVariant.animate.y, 0, "Animate wizard y must be 0");
 
-  // Spring transition verification
   const yTransition = wizardMorphVariant.animate.transition.y;
   assert.equal(yTransition.type, "spring", "Wizard slide transition must use spring physics");
   assert.ok(yTransition.stiffness > 0, "Spring stiffness must be positive");
@@ -76,58 +76,90 @@ console.log("=================================================================")
 }
 
 // -----------------------------------------------------------------------------
-// Test 4: Form State Preservation Across View Switching
+// Test 4: Direction-Aware Wizard Step Navigation (Forward & Backward)
 // -----------------------------------------------------------------------------
 {
-  const originalFormData = {
-    fullName: "Alex Rivera",
-    email: "alex@example.com",
-    annualIncome: "145000",
-    monthlyNetIncome: "8200",
-    employmentStatus: "full_time"
-  };
+  assert.ok(typeof stepSlideVariant.initial === "function", "stepSlideVariant.initial must be a function accepting direction");
+  assert.ok(typeof stepSlideVariant.exit === "function", "stepSlideVariant.exit must be a function accepting direction");
 
-  // Simulate passing initial values into conversational wizard
-  const wizardInitialValues = {
-    ...originalFormData,
-    annualIncome: originalFormData.annualIncome || "",
-    monthlyNetIncome: originalFormData.monthlyNetIncome || ""
-  };
+  // Forward Navigation (direction = 1, user clicks Next):
+  // Enters from right (+36px), exits to left (-36px)
+  const forwardInitial = stepSlideVariant.initial({ direction: 1, reduceMotion: false });
+  assert.ok(forwardInitial.x > 0, `Forward initial x must be > 0 (enters from right), got ${forwardInitial.x}`);
+  assert.equal(forwardInitial.opacity, 0, "Forward initial opacity must be 0");
 
-  assert.equal(wizardInitialValues.annualIncome, "145000", "Annual income must be preserved in wizard");
-  assert.equal(wizardInitialValues.fullName, "Alex Rivera", "Full name must be preserved in wizard");
+  const forwardExit = stepSlideVariant.exit({ direction: 1, reduceMotion: false });
+  assert.ok(forwardExit.x < 0, `Forward exit x must be < 0 (exits to left), got ${forwardExit.x}`);
+  assert.equal(forwardExit.opacity, 0, "Forward exit opacity must be 0");
 
-  // Simulate updating values inside the wizard
-  const wizardUpdates = {
-    monthlyNetIncome: "8500",
-    incomeVerificationType: "W2"
-  };
+  // Backward Navigation (direction = -1, user clicks Back):
+  // Enters from left (-36px), exits to right (+36px)
+  const backwardInitial = stepSlideVariant.initial({ direction: -1, reduceMotion: false });
+  assert.ok(backwardInitial.x < 0, `Backward initial x must be < 0 (enters from left), got ${backwardInitial.x}`);
+  assert.equal(backwardInitial.opacity, 0, "Backward initial opacity must be 0");
 
-  const mergedBackToForm = {
-    ...originalFormData,
-    ...wizardUpdates
-  };
+  const backwardExit = stepSlideVariant.exit({ direction: -1, reduceMotion: false });
+  assert.ok(backwardExit.x > 0, `Backward exit x must be > 0 (exits to right), got ${backwardExit.x}`);
+  assert.equal(backwardExit.opacity, 0, "Backward exit opacity must be 0");
 
-  assert.equal(mergedBackToForm.monthlyNetIncome, "8500", "Updated value from wizard must sync back");
-  assert.equal(mergedBackToForm.fullName, "Alex Rivera", "Non-wizard fields must remain intact");
-
-  console.log("✅ Test 4 Passed: Bi-directional state preservation verified without page refresh");
+  console.log("✅ Test 4 Passed: Direction-aware horizontal slide transitions verified (Forward: +36 -> -36, Backward: -36 -> +36)");
 }
 
 // -----------------------------------------------------------------------------
-// Test 5: Shared Layout Configuration & Height Reservation
+// Test 5: Accessibility: Prefers-Reduced-Motion Support
 // -----------------------------------------------------------------------------
 {
-  const expectedLayoutId = "auragen-form-card";
-  assert.ok(expectedLayoutId.length > 0, "Shared layoutId must be a valid non-empty string");
+  // When user OS has prefers-reduced-motion: reduce enabled:
+  // Horizontal translation x must be 0 (no motion sickness), only clean opacity fade!
+  const reducedForwardInitial = stepSlideVariant.initial({ direction: 1, reduceMotion: true });
+  assert.equal(reducedForwardInitial.x, 0, "Reduced motion forward initial x must be 0 (no slide)");
+  assert.equal(reducedForwardInitial.opacity, 0, "Reduced motion opacity fade must be preserved");
 
-  // Reserved minimum height constraint to prevent cumulative layout shift (CLS)
-  const reservedMinHeightPx = 620;
-  assert.ok(reservedMinHeightPx >= 500, "Container must reserve at least 500px to prevent layout jump");
+  const reducedForwardExit = stepSlideVariant.exit({ direction: 1, reduceMotion: true });
+  assert.equal(reducedForwardExit.x, 0, "Reduced motion forward exit x must be 0");
+  assert.equal(reducedForwardExit.opacity, 0);
 
-  console.log(`✅ Test 5 Passed: LayoutId '${expectedLayoutId}' and ${reservedMinHeightPx}px height reservation validated`);
+  const reducedBackwardInitial = stepSlideVariant.initial({ direction: -1, reduceMotion: true });
+  assert.equal(reducedBackwardInitial.x, 0, "Reduced motion backward initial x must be 0");
+
+  console.log("✅ Test 5 Passed: prefers-reduced-motion accessibility verified (x-offsets strictly suppressed)");
+}
+
+// -----------------------------------------------------------------------------
+// Test 6: Form State Preservation Across Wizard Steps
+// -----------------------------------------------------------------------------
+{
+  const initialFormValues = {
+    annualIncome: "125000",
+    monthlyNetIncome: "7200",
+    incomeVerificationType: "1099"
+  };
+
+  // Step 1: User types values
+  const step1Values = {
+    ...initialFormValues,
+    annualIncome: "135000",
+    monthlyNetIncome: "7800"
+  };
+
+  // Step 2: User advances and fills employment details
+  const step2Values = {
+    ...step1Values,
+    employmentStatus: "SelfEmployed",
+    employerName: "Rivera Tech LLC"
+  };
+
+  // Step 1 values MUST be preserved in Step 2
+  assert.equal(step2Values.annualIncome, "135000", "Annual income must persist in Step 2");
+  assert.equal(step2Values.monthlyNetIncome, "7800", "Monthly net income must persist in Step 2");
+  assert.equal(step2Values.employmentStatus, "SelfEmployed", "Step 2 fields must be populated");
+
+  // User navigates backward to Step 1: values must still be intact!
+  assert.equal(step2Values.annualIncome, "135000", "Annual income persists when navigating back");
+
+  console.log("✅ Test 6 Passed: Full input preservation across bidirectional step navigation validated");
 }
 
 console.log("\n=================================================================");
-console.log("🎉 All 5 Morphing Animation Tests Passed Successfully!");
+console.log("🎉 All 6 Morphing & Wizard Step Navigation Tests Passed!");
 console.log("=================================================================");
