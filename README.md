@@ -1,7 +1,7 @@
 # AuraGen – Self-Healing Generative UI via Cognitive Load
 
 > **Infotact Solutions – Advanced Generative AI Engineering (Week 1 Full-Stack Monorepo)**  
-> Real-time behavioral telemetry streaming over WebSockets + Complex Financial Form Demo + Stubbed Code-Gen Integration.
+> Real-time WebSocket telemetry, the financial form demo, and schema-driven wizard generation.
 
 ---
 
@@ -9,6 +9,7 @@
 
 Standard enterprise forms are rigid. When a user struggles on a complex financial disclosure form, AuraGen tracks behavioral friction signals (mouse velocity, hesitation time, rage clicks, click-error rate) to calculate a real-time **Cognitive Load Score (0–100)**. When the score crosses the configured threshold (`>= 70`), the Node.js WebSocket server invokes `generateComponent()` and pushes a custom, simplified React wizard component (`{ type: "component", code }`) back to the browser.
 
+<<<<<<< HEAD
 ### Week 1–2/3 Bridge Architecture
 - **Backend (`/backend`)**:
   - **Zod Payload Validation (`src/validators/telemetryValidator.js`)**: Strict `zod` schema validating telemetry packets (`cursor`, `metrics`, `instantScore`, `rollingAverageScore`, `activeFieldId`, `formStateSnapshot`).
@@ -19,6 +20,17 @@ Standard enterprise forms are rigid. When a user struggles on a complex financia
   - **5-Second Sliding Window Telemetry & State Serialization (`src/hooks/useTelemetry.js`)**: Tracks velocity, hesitation, rage clicks, click errors, computes both `instantScore` and 5s `rollingAverageScore` to prevent false positives, and serializes `formStateSnapshot` (typed values + DOM context) when threshold is breached.
   - **Field-Level Financial Form (`src/components/FinancialForm.jsx`)**: 21-field, 5-section financial disclosure form (`Personal`, `Employment`, `Income`, `Assets`, `Liabilities`) with `onFocus`, `onBlur`, and `onMouseMove` tracking.
   - **Live Mouse Trajectory Heatmap & Floating Debug HUD (`src/components/TelemetryHUD.jsx`)**: Togglable full-screen HTML5 `<canvas>` (`pointer-events: none`) rendering smooth green-to-red cursor trajectories + a floating corner Debug HUD with live metrics and Session Store API polling.
+=======
+### Week 1 Scope
+- **Backend (`/backend`)** validates the form and telemetry, applies the cognitive-load threshold, and generates a wizard layout locally or through LangChain and OpenAI. A fixed template converts the validated layout to the `{ type: "component", code }` response.
+- **Frontend (`/frontend`)**: Next.js (App Router) + Tailwind CSS app featuring:
+  - Resilient WebSocket client service & `useWebSocket` React hook (auto-reconnect with exponential backoff, connection status, `sendTelemetry`, `onMessage`).
+  - Behavioral `useTelemetry` hook tracking mouse velocity, field hesitation, rage clicks, and click errors.
+  - Complex 21-field, 5-section financial application (`Personal`, `Employment`, `Income`, `Assets`, `Liabilities`) with full client-side validation.
+  - Live Telemetry HUD & Week 1 Code Inspector Drawer.
+
+*(Note: Babel AST validation, in-browser dynamic compilation, DOM state preservation, Framer Motion morphing, and streaming fallbacks belong to Weeks 2–4.)*
+>>>>>>> e6820a9 (feat: implement AuraGen design system and secure wizard generation)
 
 ---
 
@@ -38,15 +50,16 @@ AuraGen (Infotact Solutions)/
 │   ├── package.json                       # Backend dependencies (ws, dotenv)
 │   ├── src/
 │   │   ├── config/
-│   │   │   └── constants.js               # WS_PORT, threshold, cooldown, default form schema
+│   │   │   ├── constants.js               # Environment, schema and request limits
+│   │   │   └── designSystem.js            # Six approved component contracts
 │   │   ├── services/
-│   │   │   ├── codeGenService.js          # Teammate module adapter (falls back to stub)
-│   │   │   └── codeGenStub.js             # Week 1 placeholder React wizard generator
+│   │   │   ├── codeGenService.js          # Wizard orchestration and compatibility adapter
+│   │   │   ├── openAIWizard.js            # LangChain client and provider retry policy
+│   │   │   └── wizardPrompt.js            # Versioned prompt and three examples
 │   │   ├── validators/
-│   │   │   └── telemetryValidator.js      # Strict shared JSON format validator
+│   │   │   └── telemetryValidator.js      # Telemetry and form validation entry point
 │   │   └── server.js                      # HTTP /health + WebSocket server
-│   └── tests/
-│       └── test-ws-server.js              # Automated WebSocket integration test suite
+│   └── tests/                             # Integration tests, ten scenarios and benchmark
 └── frontend/
     ├── .env.local                         # Local frontend environment variables
     ├── .env.local.example                 # Frontend environment template
@@ -114,7 +127,7 @@ npm run install:all
 *(Or manually run `npm install` inside both `backend/` and `frontend/`.)*
 
 ### 2. Verify Environment Files
-Default local config files are included:
+Create local config files from the templates if you need to override the defaults.
 - `backend/.env` (`WS_PORT=8080`, `COGNITIVE_LOAD_THRESHOLD=70`)
 - `frontend/.env.local` (`NEXT_PUBLIC_WS_URL=ws://localhost:8080`, `NEXT_PUBLIC_COGNITIVE_LOAD_THRESHOLD=70`)
 
@@ -151,7 +164,7 @@ npm run dev
 ```bash
 npm run test:backend
 ```
-Tests `/health`, WebSocket handshake, invalid telemetry error handling, low-score logging, and high-score `{ type: "component", code }` generation.
+Tests cover the WebSocket protocol, backend startup, provider failures, and ten form scenarios with deterministic provider responses.
 
 ### Frontend Production Build Check
 ```bash
@@ -160,17 +173,14 @@ npm run build:frontend
 
 ### Interactive Demo Walkthrough
 1. Open `http://localhost:3000` in your browser.
-2. Observe the **TelemetryHUD** banner at the top showing `WS Connected` and live velocity/hesitation metrics streaming to the backend terminal.
+2. Observe the **TelemetryHUD** banner at the top showing `WS Connected` and live velocity and hesitation metrics.
 3. Interact with the 21-field **Commercial Credit & Wealth Disclosure** form (test validation by clicking **Validate & Submit Application** or clicking **Prefill Partial Data**).
 4. Click **Simulate Friction Spike** (or rapidly click 3+ times in one spot / wait idle on a field) to push `cognitiveLoadScore >= 70`.
-5. Watch the backend console log the threshold breach and immediately push `{ type: "component", code }` back to the frontend, opening the **Generated Component Preview** drawer.
+5. Open the **Generated Component Preview** drawer to inspect the JSX returned by the backend.
 
 ---
 
-## 🔗 Integrating Teammate's LangChain Module
+## Enable OpenAI wizard generation
 
-When the AI/Backend teammate's `generateComponent()` LangChain module is ready:
-1. Place or link their module at `backend/src/codegen/agent.js` (exporting `generateComponent({ activeField, formFields, userInput, score })`).
-2. Set `USE_TEAMMATE_CODEGEN=true` and add `OPENAI_API_KEY=...` in `backend/.env`.
-3. `backend/src/services/codeGenService.js` will automatically delegate to their LangChain pipeline instead of the Week 1 stub.
+The backend requires Node.js 22 or newer. It groups fields locally by default. Set `USE_TEAMMATE_CODEGEN=true` and add `OPENAI_API_KEY` in `backend/.env` to enable LangChain with GPT-4o. Read the [backend wizard documentation](backend/WIZARD.md) for component contracts, the WebSocket compatibility boundary, operational limits, benchmarks, and review records.
 

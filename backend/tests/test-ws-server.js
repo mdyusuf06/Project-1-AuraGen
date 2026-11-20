@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { setTimeout as delay } from "node:timers/promises";
 import { WebSocket } from "ws";
 import { createAuraGenServer } from "../src/server.js";
+<<<<<<< HEAD
 import { validateComponentAst, ASTSecurityError } from "../src/services/astValidator.js";
 
 function runAstValidatorUnitTests() {
@@ -36,6 +38,9 @@ function runAstValidatorUnitTests() {
 
   console.log(`✅ AST Unit Tests Passed: Safe JSX (including "documentType") allowed; ${unsafePayloads.length} unsafe/malformed payloads blocked.`);
 }
+=======
+import { createWizardGenerator } from "../src/services/codeGenService.js";
+>>>>>>> e6820a9 (feat: implement AuraGen design system and secure wizard generation)
 
 async function runBackendTests() {
   console.log("=================================================================");
@@ -47,7 +52,8 @@ async function runBackendTests() {
   const server = createAuraGenServer({
     port: 0,
     threshold: 70,
-    cooldownMs: 500
+    cooldownMs: 500,
+    codeGenerator: createWizardGenerator({ invoke: null }).generateComponent
   });
 
   const { port } = await server.start();
@@ -119,8 +125,13 @@ async function runBackendTests() {
     );
     await new Promise((r) => setTimeout(r, 150));
     const componentAfterLow = receivedMessages.slice(countBeforeLow).find((m) => m.type === "component");
+<<<<<<< HEAD
     assert.equal(componentAfterLow, undefined, "Low rollingAverageScore should NOT trigger component generation");
     console.log("✅ Test 4 Passed: Low rollingAverageScore (28 < 70) stored without triggering generation");
+=======
+    assert.equal(componentAfterLow, undefined, "Low score should NOT trigger component generation");
+    console.log("✅ Test 4 Passed: Low cognitiveLoadScore (32 < 70) did not trigger generation");
+>>>>>>> e6820a9 (feat: implement AuraGen design system and secure wizard generation)
 
     // 5. Test valid telemetry ABOVE threshold WITH formStateSnapshot
     ws.send(
@@ -157,6 +168,7 @@ async function runBackendTests() {
       })
     );
 
+<<<<<<< HEAD
     const componentMsg = await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error("Timed out waiting for component reply")), 3000);
       const check = () => {
@@ -170,6 +182,15 @@ async function runBackendTests() {
       };
       check();
     });
+=======
+    // Wait for component message
+    const signal = AbortSignal.timeout(3000);
+    let componentMsg = receivedMessages.find((m) => m.type === "component");
+    while (!componentMsg) {
+      await delay(50, undefined, { signal });
+      componentMsg = receivedMessages.find((m) => m.type === "component");
+    }
+>>>>>>> e6820a9 (feat: implement AuraGen design system and secure wizard generation)
 
     assert.equal(componentMsg.type, "component");
     assert.ok(componentMsg.code.includes("export default function DynamicFormWizard"));

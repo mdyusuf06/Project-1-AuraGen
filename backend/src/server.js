@@ -1,12 +1,12 @@
-import http from "http";
+import http from "node:http";
+import { pathToFileURL } from "node:url";
 import { WebSocketServer, WebSocket } from "ws";
 import {
-  WS_PORT,
-  COGNITIVE_LOAD_THRESHOLD,
-  GENERATION_COOLDOWN_MS
+  WS_PORT, COGNITIVE_LOAD_THRESHOLD, GENERATION_COOLDOWN_MS, MAX_MESSAGE_BYTES
 } from "./config/constants.js";
 import { validateTelemetryMessage } from "./validators/telemetryValidator.js";
 import { generateComponent } from "./services/codeGenService.js";
+<<<<<<< HEAD
 import { validateComponentAst } from "./services/astValidator.js";
 import { createSessionStore } from "./store/sessionStore.js";
 
@@ -14,11 +14,35 @@ import { createSessionStore } from "./store/sessionStore.js";
  * Creates the HTTP + WebSocket server instance for AuraGen.
  * Supports dependency injection of `codeGenerator` and `sessionStore` for testing.
  */
+=======
+import { publicGenerationError } from "./services/generationErrors.js";
+import { createRateLimit } from "./services/rateLimit.js";
+
+const localOrigins = ["http://localhost:3000", "http://127.0.0.1:3000", "http://[::1]:3000"];
+const minute = 60_000;
+
+function rejectUpgrade(socket, status) {
+  socket.end(`HTTP/1.1 ${status} ${http.STATUS_CODES[status]}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+}
+
+function send(ws, message) {
+  if (ws.readyState !== WebSocket.OPEN) return;
+  const serialized = JSON.stringify(message);
+  if (ws.bufferedAmount + Buffer.byteLength(serialized) > 256 * 1024) {
+    ws.terminate();
+    return;
+  }
+  ws.send(serialized);
+}
+
+>>>>>>> e6820a9 (feat: implement AuraGen design system and secure wizard generation)
 export function createAuraGenServer({
   port = WS_PORT,
+  host = process.env.WS_HOST || (process.env.NODE_ENV === "production" ? "127.0.0.1" : undefined),
   threshold = COGNITIVE_LOAD_THRESHOLD,
   cooldownMs = GENERATION_COOLDOWN_MS,
   codeGenerator = generateComponent,
+<<<<<<< HEAD
   sessionStore = createSessionStore()
 } = {}) {
   // Per-session generation cooldown/in-flight lock
@@ -92,20 +116,82 @@ export function createAuraGenServer({
     sendJson(res, 404, {
       error: "Not found. Available routes: GET /health, GET /api/sessions, GET /api/sessions/:sessionId/metrics"
     });
+=======
+  allowedOrigins = process.env.WS_ALLOWED_ORIGINS?.split(",").map((origin) => origin.trim()) ??
+    (process.env.NODE_ENV === "production" ? [] : localOrigins),
+  allowMissingOrigin = process.env.NODE_ENV !== "production",
+  authorizeUpgrade = () => true,
+  limits = {}
+} = {}) {
+  if (!Number.isInteger(port) || port < 0 || port > 65_535 ||
+      !Number.isFinite(threshold) || threshold < 0 || threshold > 100 ||
+      !Number.isInteger(cooldownMs) || cooldownMs < 0) {
+    throw new Error("Invalid AuraGen WebSocket configuration.");
+  }
+  const {
+    maxClients = 100, maxClientsPerIp = 16, upgradesPerIp = 60,
+    messagesPerClient = 300, messagesPerIp = 2400, generationsPerIp = 30
+  } = limits;
+  const origins = new Set(allowedOrigins);
+  const ipConnections = new Map();
+  const upgrades = createRateLimit(upgradesPerIp, minute, 1024);
+  const messages = createRateLimit(messagesPerIp, minute, 1024);
+  const generations = createRateLimit(generationsPerIp, minute, 1024);
+
+  const httpServer = http.createServer({
+    maxHeaderSize: 8192, headersTimeout: 5000, requestTimeout: 10_000, connectionsCheckingInterval: 1000
+  }, (req, res) => {
+    const healthy = req.method === "GET" && req.url === "/health";
+    res.writeHead(healthy ? 200 : 404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(healthy ? {
+      status: "ok",
+      service: "auragen-websocket-server",
+      threshold,
+      cooldownMs,
+      connectedClients: wss.clients.size,
+      timestamp: Date.now()
+    } : { error: "Not found. Connect via WebSocket or GET /health." }));
+  });
+  httpServer.maxConnections = maxClients + 32;
+  const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES, perMessageDeflate: false });
+
+  httpServer.on("upgrade", (req, socket, head) => {
+    const ip = socket.remoteAddress || "unknown";
+    const origin = req.headers.origin;
+    if (!upgrades.take(ip)) return rejectUpgrade(socket, 429);
+    if (origin === undefined ? !allowMissingOrigin : !origins.has(origin)) return rejectUpgrade(socket, 403);
+    if (wss.clients.size >= maxClients || (ipConnections.get(ip) ?? 0) >= maxClientsPerIp) {
+      return rejectUpgrade(socket, 503);
+    }
+    try {
+      if (authorizeUpgrade(req) !== true) return rejectUpgrade(socket, 401);
+    } catch {
+      return rejectUpgrade(socket, 401);
+    }
+    wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, ip));
+>>>>>>> e6820a9 (feat: implement AuraGen design system and secure wizard generation)
   });
 
-  const wss = new WebSocketServer({ server: httpServer });
-
-  wss.on("connection", (ws, req) => {
-    const clientIp = req.socket.remoteAddress || "unknown";
+  wss.on("connection", (ws, ip) => {
+    ipConnections.set(ip, (ipConnections.get(ip) ?? 0) + 1);
+    const localMessages = createRateLimit(messagesPerClient, minute, 1);
+    const disconnected = new AbortController();
+    let inFlight = false;
+    let lastField;
+    let nextGenerationAt = 0;
     ws.isAlive = true;
-
-    console.log(`[WS] Client connected from ${clientIp} (Total clients: ${wss.clients.size})`);
-
-    ws.on("pong", () => {
-      ws.isAlive = true;
+    ws.on("pong", () => { ws.isAlive = true; });
+    // ws owns error shutdown, including the close frame for oversized messages.
+    ws.on("error", () => {});
+    ws.on("close", () => {
+      disconnected.abort();
+      const remaining = ipConnections.get(ip) - 1;
+      if (remaining > 0) ipConnections.set(ip, remaining);
+      else ipConnections.delete(ip);
     });
+    send(ws, { type: "connected", threshold, timestamp: Date.now() });
 
+<<<<<<< HEAD
     // Notify client of successful connection and active cognitive load threshold
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(
@@ -243,38 +329,73 @@ export function createAuraGenServer({
               details: err.message
             })
           );
+=======
+    ws.on("message", async (rawData, binary) => {
+      if (ws.readyState !== WebSocket.OPEN) return;
+      const now = Date.now();
+      if (!localMessages.take(ws, now) || !messages.take(ip, now)) {
+        send(ws, { type: "error", code: "RATE_LIMIT", message: "Too many telemetry messages." });
+        ws.close(1008, "Rate limit");
+        return;
+      }
+      if (binary) {
+        send(ws, { type: "error", code: "INVALID_TELEMETRY", message: "Invalid telemetry message format", errors: ["Send JSON as a text message."] });
+        return;
+      }
+
+      let started = false;
+      try {
+        const validation = validateTelemetryMessage(rawData);
+        if (!validation.valid) {
+          send(ws, { type: "error", code: "INVALID_TELEMETRY", message: "Invalid telemetry message format", errors: validation.errors });
+          return;
+        }
+        const { cognitiveLoadScore, activeField, formFields } = validation.data;
+        if (cognitiveLoadScore < threshold || inFlight || (lastField === activeField && now < nextGenerationAt)) return;
+        lastField = activeField;
+        nextGenerationAt = now + cooldownMs;
+        if (!generations.take(ip, now)) {
+          send(ws, { type: "error", code: "RATE_LIMIT", message: "Too many generation requests. Try again shortly." });
+          return;
+        }
+        inFlight = started = true;
+        const code = await codeGenerator({
+          activeField: activeField || (formFields === undefined ? "annualIncome" : ""),
+          formFields,
+          score: cognitiveLoadScore,
+          signal: disconnected.signal
+        });
+        send(ws, { type: "component", code });
+      } catch (error) {
+        const { code, message, issues } = publicGenerationError(error);
+        send(ws, {
+          type: "error", code, message: "Component generation failed", details: message,
+          ...(issues.length > 0 && { issues })
+        });
+      } finally {
+        if (started) {
+          inFlight = false;
+          nextGenerationAt = Date.now() + cooldownMs;
+>>>>>>> e6820a9 (feat: implement AuraGen design system and secure wizard generation)
         }
       }
     });
-
-    ws.on("close", (code, reason) => {
-      console.log(
-        `[WS] Client disconnected (code=${code}, reason="${reason?.toString() || ""}", remaining=${wss.clients.size})`
-      );
-    });
-
-    ws.on("error", (err) => {
-      console.error("[WS] Client socket error:", err.message);
-    });
   });
 
-  // Heartbeat interval to terminate stale connections
-  const heartbeatTimer = setInterval(() => {
-    for (const client of wss.clients) {
-      if (client.isAlive === false) {
-        client.terminate();
-        continue;
+  const heartbeat = setInterval(() => {
+    for (const ws of wss.clients) {
+      if (!ws.isAlive) ws.terminate();
+      else {
+        ws.isAlive = false;
+        if (ws.readyState === WebSocket.OPEN) ws.ping();
       }
-      client.isAlive = false;
-      client.ping();
     }
-  }, 30000);
-
-  wss.on("close", () => {
-    clearInterval(heartbeatTimer);
-  });
+    for (const limiter of [upgrades, messages, generations]) limiter.prune();
+  }, 30_000).unref();
+  wss.once("close", () => clearInterval(heartbeat));
 
   function start() {
+<<<<<<< HEAD
     return new Promise((resolve) => {
       httpServer.listen(port, () => {
         const address = httpServer.address();
@@ -287,40 +408,36 @@ export function createAuraGenServer({
         console.log(`⏱️  Generation Cooldown: ${cooldownMs}ms`);
         console.log("=================================================================");
         resolve({ port: boundPort, httpServer, wss, sessionStore });
+=======
+    return new Promise((resolve, reject) => {
+      httpServer.once("error", reject);
+      httpServer.listen(port, host, () => {
+        httpServer.off("error", reject);
+        resolve({ port: httpServer.address().port, httpServer, wss });
+>>>>>>> e6820a9 (feat: implement AuraGen design system and secure wizard generation)
       });
     });
   }
 
-  function stop() {
-    clearInterval(heartbeatTimer);
-    return new Promise((resolve) => {
-      for (const client of wss.clients) {
-        client.terminate();
-      }
-      wss.close(() => {
-        httpServer.close(() => resolve());
-      });
-    });
+  async function stop() {
+    for (const ws of wss.clients) ws.terminate();
+    await Promise.all([
+      new Promise((resolve) => wss.close(resolve)),
+      new Promise((resolve) => httpServer.close(resolve))
+    ]);
   }
 
   return { httpServer, wss, sessionStore, start, stop };
 }
 
-// Start server directly when run via `node src/server.js`
-const isDirectExecution =
-  process.argv[1] &&
-  import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
-
-if (isDirectExecution) {
-  const server = createAuraGenServer();
-  server.start();
-
-  const shutdown = async () => {
-    console.log("\n[WS] Shutting down AuraGen WebSocket server...");
-    await server.stop();
-    process.exit(0);
-  };
-
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try {
+    const server = createAuraGenServer();
+    const { port } = await server.start();
+    console.log(`AuraGen backend listening on port ${port}`);
+    for (const event of ["SIGINT", "SIGTERM"]) process.once(event, () => { void server.stop(); });
+  } catch {
+    console.error("AuraGen backend could not start. Check the WebSocket settings and port availability.");
+    process.exitCode = 1;
+  }
 }

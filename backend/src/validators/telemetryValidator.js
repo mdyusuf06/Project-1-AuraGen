@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import { z } from "zod";
 
 /**
@@ -17,6 +18,13 @@ export const CursorPositionSchema = z.object({
   x: z.number().finite().min(0),
   y: z.number().finite().min(0)
 });
+=======
+import { MAX_MESSAGE_BYTES } from "../config/constants.js";
+import { GenerationError } from "../services/generationErrors.js";
+import { isIdentifier, isRecord, isScore, validateFormFields } from "./formValidator.js";
+
+const metricKeys = ["mouseVelocity", "hesitationMs", "rageClicks", "clickErrorRate"];
+>>>>>>> e6820a9 (feat: implement AuraGen design system and secure wizard generation)
 
 export const DomContextSchema = z.object({
   activeFieldId: z.string().optional(),
@@ -57,6 +65,7 @@ export const TelemetryPayloadSchema = z.object({
  * @returns {{ valid: true, data: object } | { valid: false, errors: string[] }}
  */
 export function validateTelemetryMessage(rawMessage) {
+<<<<<<< HEAD
   let parsedJson;
 
   if (typeof rawMessage === "string") {
@@ -67,16 +76,23 @@ export function validateTelemetryMessage(rawMessage) {
         valid: false,
         errors: ["Invalid JSON payload."]
       };
+=======
+  let payload = rawMessage;
+  if (typeof rawMessage === "string" || Buffer.isBuffer(rawMessage)) {
+    if (Buffer.byteLength(rawMessage) > MAX_MESSAGE_BYTES) {
+      return { valid: false, errors: ["Payload exceeds the message size limit."] };
+>>>>>>> e6820a9 (feat: implement AuraGen design system and secure wizard generation)
     }
-  } else if (Buffer.isBuffer(rawMessage)) {
     try {
+<<<<<<< HEAD
       parsedJson = JSON.parse(rawMessage.toString("utf-8"));
+=======
+      payload = JSON.parse(rawMessage.toString());
+>>>>>>> e6820a9 (feat: implement AuraGen design system and secure wizard generation)
     } catch {
-      return {
-        valid: false,
-        errors: ["Invalid UTF-8 JSON buffer payload."]
-      };
+      return { valid: false, errors: ["Invalid JSON payload."] };
     }
+<<<<<<< HEAD
   } else if (rawMessage && typeof rawMessage === "object") {
     parsedJson = rawMessage;
   } else {
@@ -98,8 +114,12 @@ export function validateTelemetryMessage(rawMessage) {
       valid: false,
       errors
     };
+=======
+>>>>>>> e6820a9 (feat: implement AuraGen design system and secure wizard generation)
   }
+  if (!isRecord(payload)) return { valid: false, errors: ["Payload must be a JSON object."] };
 
+<<<<<<< HEAD
   const data = result.data;
   const instantScore = data.instantScore ?? data.cognitiveLoadScore;
   const rollingAverageScore = data.rollingAverageScore ?? data.cognitiveLoadScore;
@@ -117,5 +137,46 @@ export function validateTelemetryMessage(rawMessage) {
       userInput,
       formFields: data.formFields || null
     }
+=======
+  const errors = [];
+  const { type, sessionId, timestamp, metrics, cognitiveLoadScore, activeField, userInput, formFields } = payload;
+  if (type !== "telemetry") errors.push('Expected message type "telemetry".');
+  if (typeof sessionId !== "string" || sessionId.length > 128 || !sessionId.trim() || /[\u0000-\u001f\u007f]/.test(sessionId)) {
+    errors.push('"sessionId" must be a non-empty string of at most 128 characters.');
+  }
+  if (!Number.isSafeInteger(timestamp) || timestamp <= 0 || timestamp > 8.64e15) {
+    errors.push('"timestamp" must be a valid positive Unix timestamp in milliseconds.');
+  }
+  if (!isRecord(metrics)) {
+    errors.push('"metrics" must be an object.');
+  } else {
+    for (const key of metricKeys) {
+      if (!Number.isFinite(metrics[key]) || metrics[key] < 0 ||
+          (key === "rageClicks" && !Number.isSafeInteger(metrics[key])) ||
+          (key === "clickErrorRate" && metrics[key] > 1)) {
+        errors.push(`"metrics.${key}" is out of range.`);
+      }
+    }
+  }
+  if (!isScore(cognitiveLoadScore)) errors.push('"cognitiveLoadScore" must be between 0 and 100.');
+  if (activeField !== "" && !isIdentifier(activeField)) errors.push('"activeField" must be a field identifier or empty.');
+  if (userInput !== undefined && !isRecord(userInput)) errors.push('"userInput" must be an object if provided.');
+  if (errors.length > 0) return { valid: false, errors };
+
+  let validatedFields;
+  try {
+    // Validate even on low-score messages. Keep the application values out of generation.
+    if (formFields !== undefined) validatedFields = validateFormFields(formFields);
+    if (validatedFields && activeField && !validatedFields.some(({ name }) => name === activeField)) {
+      return { valid: false, errors: ['"activeField" must refer to a field in the form schema.'] };
+    }
+  } catch (error) {
+    if (!(error instanceof GenerationError)) throw error;
+    return { valid: false, errors: error.issues.map(({ path, message }) => `${path}: ${message}`) };
+  }
+  return {
+    valid: true,
+    data: { type, sessionId: sessionId.trim(), timestamp, cognitiveLoadScore, activeField, formFields: validatedFields }
+>>>>>>> e6820a9 (feat: implement AuraGen design system and secure wizard generation)
   };
 }
