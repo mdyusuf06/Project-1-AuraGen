@@ -159,6 +159,7 @@ export function createAuraGenWsService(url, options = {}) {
       timestamp: Number(telemetry.timestamp || Date.now()),
       metrics: {
         mouseVelocity: Number(telemetry.metrics?.mouseVelocity ?? 0),
+        velocityVariance: Number(telemetry.metrics?.velocityVariance ?? 0),
         hesitationMs: Number(telemetry.metrics?.hesitationMs ?? 0),
         rageClicks: Number(telemetry.metrics?.rageClicks ?? 0),
         clickErrorRate: Number(telemetry.metrics?.clickErrorRate ?? 0),
