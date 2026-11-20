@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
   simulateConfusion as runSimulateConfusion,
   simulateCalmUser as runSimulateCalmUser,
@@ -424,7 +424,7 @@ export function useTelemetry({
 
       setTelemetrySnapshot(snapshot);
 
-      // Record to time-series history (keeping last 40 data points for live chart & CSV)
+      // Record to time-series history (keeping last 60 data points for live chart & CSV)
       setTelemetryHistory((prev) => {
         const timeSec = prev.length > 0 ? (prev[prev.length - 1].timeSeconds || 0) + 1 : 0;
         const historyItem = {
@@ -434,6 +434,8 @@ export function useTelemetry({
           rawScore,
           threshold: activeThreshold,
           isThresholdReached: cognitiveLoadScore >= activeThreshold,
+          isTriggered: Boolean(isTriggered),
+          activeField: field,
           velocityVariance: metrics.velocityVariance,
           hesitationMs: metrics.hesitationMs,
           rageClicks: metrics.rageClicks,
@@ -442,7 +444,7 @@ export function useTelemetry({
           mode: simulationModeRef.current
         };
         const next = [...prev, historyItem];
-        return next.length > 40 ? next.slice(-40) : next;
+        return next.length > 60 ? next.slice(-60) : next;
       });
 
       // Stream to WebSocket
@@ -783,6 +785,24 @@ export function useTelemetry({
     downloadCSVReport(telemetryHistory);
   }, [telemetryHistory]);
 
+  // Rolling analytics summary computed from recent time-series history
+  const analyticsSummary = useMemo(() => {
+    if (!telemetryHistory || telemetryHistory.length === 0) {
+      return { avgScore: 0, peakScore: 0, triggerCount: 0, totalSamples: 0 };
+    }
+    const scores = telemetryHistory.map((h) => h.score ?? 0);
+    const sum = scores.reduce((a, b) => a + b, 0);
+    const avgScore = Math.round(sum / scores.length);
+    const peakScore = Math.max(...scores);
+    const triggerCount = telemetryHistory.filter((h) => h.isThresholdReached || h.isTriggered).length;
+    return {
+      avgScore,
+      peakScore,
+      triggerCount,
+      totalSamples: telemetryHistory.length
+    };
+  }, [telemetryHistory]);
+
   const score = telemetrySnapshot.cognitiveLoadScore;
   const isFrustrated = score >= threshold;
 
@@ -800,6 +820,7 @@ export function useTelemetry({
     activeField: telemetrySnapshot.activeField,
     telemetrySnapshot,
     telemetryHistory,
+    analyticsSummary,
     simulationMode,
     startConfusionSimulation,
     startCalmSimulation,
