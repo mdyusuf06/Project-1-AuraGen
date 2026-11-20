@@ -8,7 +8,12 @@ import FinancialForm from "../components/FinancialForm";
 import ConversationalWizard from "../components/ConversationalWizard";
 import SimplifyingOverlay from "../components/SimplifyingOverlay";
 import GeneratedCodeDrawer from "../components/GeneratedCodeDrawer";
-import { ErrorBoundary, WizardLoadingSkeleton } from "../fallback";
+import {
+  ErrorBoundary,
+  WizardLoadingSkeleton,
+  useGenerationFallback,
+  getFallbackTemplate
+} from "../fallback";
 import {
   AnimatePresence,
   motion,
@@ -27,11 +32,15 @@ export default function AuraGenDemoPage() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [currentThreshold, setCurrentThreshold] = useState(DEFAULT_THRESHOLD);
 
-  // UI Morphing & Loading State: "form" (original form) | "loading" (skeleton) | "wizard" (simplified assistant)
+  // UI Morphing & Loading State: "form" | "loading" | "wizard" | "fallback-template"
   const [viewMode, setViewMode] = useState("form");
   const [showSimplifyingOverlay, setShowSimplifyingOverlay] = useState(false);
   const [sharedFormValues, setSharedFormValues] = useState(() => createInitialFormValues());
   const [wizardKey, setWizardKey] = useState(0);
+
+  // Fallback states & pre-built template storage
+  const [activeFallbackTemplate, setActiveFallbackTemplate] = useState(null);
+  const [fallbackNotification, setFallbackNotification] = useState(null);
 
   const overlayTimerRef = useRef(null);
   const loadingTimerRef = useRef(null);
@@ -49,6 +58,53 @@ export default function AuraGenDemoPage() {
     reconnect
   } = useWebSocket(WS_URL);
 
+  // Generation fallback manager with 4-second timeout & validation failure recovery
+  const {
+    isGenerating,
+    startGeneration,
+    cancelGeneration,
+    resetFallback,
+    handleMessage: handleFallbackMessage,
+    handleConnectionFailure
+  } = useGenerationFallback({
+    timeoutMs: 4000,
+    wsStatus,
+    isConnected,
+    onFallback: (state) => {
+      console.log("[Fallback] Pre-built template fallback activated:", state);
+      setActiveFallbackTemplate(() => state.templateComponent);
+      setViewMode("fallback-template");
+      setFallbackNotification({
+        type: "template",
+        title:
+          state.reason === "timeout"
+            ? "4-Second Generation Timeout"
+            : state.reason === "validation_failed"
+            ? "Validation Security Filter"
+            : "Fallback Activated",
+        message: state.message
+      });
+    },
+    onRestoreOriginal: (state) => {
+      console.log("[Fallback] Restoring original form (template unavailable):", state);
+      setActiveFallbackTemplate(null);
+      setViewMode("form");
+      setFallbackNotification({
+        type: "restored",
+        title:
+          state.reason === "timeout"
+            ? "Generation Timed Out (4s)"
+            : "Assistant Unavailable",
+        message: state.message
+      });
+    },
+    onSuccess: () => {
+      console.log("[Fallback] Generation succeeded, timeout cancelled.");
+      setActiveFallbackTemplate(null);
+      setViewMode("wizard");
+    }
+  });
+
   const handleTelemetryTrigger = (snapshot) => {
     console.log(
       `[Telemetry] 🚨 Cognitive Load Threshold Exceeded (${snapshot.cognitiveLoadScore} >= ${currentThreshold}) at "${snapshot.activeField}". Morphing UI...`
@@ -57,22 +113,16 @@ export default function AuraGenDemoPage() {
     // Requirement 2: Display short "Simplifying this for you..." overlay before morphing
     setShowSimplifyingOverlay(true);
 
-    if (overlayTimerRef.current) {
-      clearTimeout(overlayTimerRef.current);
-    }
-    if (loadingTimerRef.current) {
-      clearTimeout(loadingTimerRef.current);
-    }
+    if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
+    if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
+
+    // Requirement 3: Start 4-second generation timeout
+    startGeneration({ activeField: snapshot.activeField });
 
     // Keep overlay visible for 1.2s then transition to graceful loading skeleton
     overlayTimerRef.current = setTimeout(() => {
       setShowSimplifyingOverlay(false);
       setViewMode("loading");
-
-      // Skeleton preparation window (1.2s), then reveal wizard
-      loadingTimerRef.current = setTimeout(() => {
-        setViewMode("wizard");
-      }, 1200);
     }, 1200);
   };
 
@@ -116,7 +166,7 @@ export default function AuraGenDemoPage() {
     };
   }, []);
 
-  // Listen for WebSocket replies ({ type: "component", code }, "connected", "error")
+  // Listen for WebSocket replies ({ type: "component", code }, validation_failed, fallback, error)
   useEffect(() => {
     const unsubscribe = onMessage((msg) => {
       if (!msg || typeof msg !== "object") return;
@@ -124,6 +174,9 @@ export default function AuraGenDemoPage() {
       if (msg.type === "connected" && typeof msg.threshold === "number") {
         setCurrentThreshold(msg.threshold);
       }
+
+      // Requirement 1 & 8: Route message to fallback coordinator
+      handleFallbackMessage(msg);
 
       if (msg.type === "component" && typeof msg.code === "string") {
         setReceivedComponents((prev) => [
@@ -133,18 +186,41 @@ export default function AuraGenDemoPage() {
           },
           ...prev
         ]);
+        setViewMode("wizard");
       }
     });
 
     return unsubscribe;
-  }, [onMessage]);
+  }, [onMessage, handleFallbackMessage]);
 
   const handleManualReset = () => {
     if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
     if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
+    cancelGeneration();
+    resetFallback();
     setShowSimplifyingOverlay(false);
+    setFallbackNotification(null);
+    setActiveFallbackTemplate(null);
     setViewMode("form");
     resetTelemetry();
+  };
+
+  // Development helper actions to verify fallback behaviors interactively
+  const handleSimulateValidationFailed = () => {
+    startGeneration({ activeField });
+    setViewMode("loading");
+    setTimeout(() => {
+      handleFallbackMessage({
+        type: "validation_failed",
+        errors: [{ rule: "no-eval", message: "Banned syntax eval() detected by Pavilson validator." }]
+      });
+    }, 400);
+  };
+
+  const handleSimulateTimeout = () => {
+    startGeneration({ activeField });
+    setViewMode("loading");
+    // Timeout will automatically trigger in 4000ms
   };
 
   const latestComponent = receivedComponents[0] || null;
@@ -171,6 +247,43 @@ export default function AuraGenDemoPage() {
         onOpenCodeDrawer={() => setIsDrawerOpen(true)}
       />
 
+      {/* Requirement 7: Fallback Notification Banner */}
+      <AnimatePresence>
+        {fallbackNotification && (
+          <motion.div
+            key="fallback-notification-banner"
+            variants={slideInUp}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            className={`mb-6 p-4 rounded-2xl border flex flex-wrap items-center justify-between gap-4 shadow-sm ${
+              fallbackNotification.type === "template"
+                ? "bg-amber-50 border-amber-200 text-amber-950"
+                : "bg-slate-100 border-slate-300 text-slate-800"
+            }`}
+          >
+            <div className="flex items-center gap-2 text-xs sm:text-sm">
+              <span className="text-lg">
+                {fallbackNotification.type === "template" ? "⚡" : "🛡️"}
+              </span>
+              <div>
+                <strong className="font-semibold block sm:inline mr-1">
+                  {fallbackNotification.title}:
+                </strong>
+                <span className="text-slate-600">{fallbackNotification.message}</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFallbackNotification(null)}
+              className="px-3 py-1 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 bg-white border border-slate-200 hover:bg-slate-50 transition-colors"
+            >
+              Dismiss
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Requirement 2: Short "Simplifying this for you..." overlay */}
       <AnimatePresence>
         {showSimplifyingOverlay && (
@@ -179,7 +292,6 @@ export default function AuraGenDemoPage() {
             onDismiss={() => {
               setShowSimplifyingOverlay(false);
               setViewMode("loading");
-              setTimeout(() => setViewMode("wizard"), 1000);
             }}
           />
         )}
@@ -223,11 +335,12 @@ export default function AuraGenDemoPage() {
         Requirements 3, 4, 5, 6, 7, 8, 9 & Fallback UI:
         - Reserved min-height container (min-h-[620px]) to prevent layout jumps
         - AnimatePresence mode="wait" for non-overlapping transitions
-        - Original form fades out and scales down (350ms, within 300-400ms)
+        - Original form fades out and scales down (350ms)
         - Loading skeleton displayed while component is prepared ("Preparing your simplified form...")
+        - 4-second timeout fallback handling
+        - Pre-built wizard template rendering when available
+        - Clean restoration to original form if template unavailable
         - Reusable ErrorBoundary wrapping the conversational wizard
-        - Clean Retry and Return to Original Form fallback recovery actions
-        - Zero page refresh
       */}
       <div className="relative min-h-[620px]">
         <AnimatePresence mode="wait">
@@ -262,8 +375,41 @@ export default function AuraGenDemoPage() {
               <WizardLoadingSkeleton
                 activeField={activeField}
                 loadingMessage="Preparing your simplified form..."
-                onCancel={() => setViewMode("form")}
+                onCancel={() => {
+                  cancelGeneration();
+                  setViewMode("form");
+                }}
               />
+            </motion.div>
+          ) : viewMode === "fallback-template" && activeFallbackTemplate ? (
+            <motion.div
+              key="fallback-template-wizard"
+              layoutId="auragen-form-card"
+              variants={wizardMorphVariant}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              layout="position"
+              className="w-full"
+            >
+              {React.createElement(activeFallbackTemplate, {
+                activeField,
+                initialValues: sharedFormValues,
+                onUpdateValues: (vals) => setSharedFormValues((prev) => ({ ...prev, ...vals })),
+                onRestoreOriginal: () => {
+                  setViewMode("form");
+                  setFallbackNotification(null);
+                },
+                onSubmitWizard: (vals) => {
+                  setSharedFormValues((prev) => ({ ...prev, ...vals }));
+                  setViewMode("form");
+                  setFallbackNotification({
+                    type: "restored",
+                    title: "Success",
+                    message: "Form updated via pre-built assistant and saved."
+                  });
+                }
+              })}
             </motion.div>
           ) : (
             <motion.div
@@ -281,8 +427,8 @@ export default function AuraGenDemoPage() {
                 onRestoreOriginal={() => setViewMode("form")}
                 onRetry={() => {
                   setWizardKey((prev) => prev + 1);
+                  startGeneration({ activeField });
                   setViewMode("loading");
-                  setTimeout(() => setViewMode("wizard"), 900);
                 }}
               >
                 <ConversationalWizard
