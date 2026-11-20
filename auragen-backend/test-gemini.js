@@ -1,64 +1,36 @@
 // ============================================================
-// TEST GEMINI — Testing Gemini LangChain CodeGenAgent
-// Run with: node test-gemini.js
+// GEMINI CONNECTION TEST
+// Run before anything else to confirm your API key works.
+// Usage: node test-gemini.js
 // ============================================================
 
 import "dotenv/config";
-import { CodeGenAgent } from "./src/agent/codeGenAgent.js";
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+import { HumanMessage } from "@langchain/core/messages";
 
-async function runGeminiTest() {
-    console.log("=================================================");
-    console.log("🧪 Testing Gemini 1.5 Pro Component Code-Gen Agent");
-    console.log("=================================================");
+const llm = new ChatGoogleGenerativeAI({
+    model: "gemini-1.5-flash",   // Use flash for quick test (cheaper)
+    temperature: 0.2,
+    googleApiKey: process.env.GEMINI_API_KEY,
+});
 
-    if (!process.env.GEMINI_API_KEY) {
-        console.warn("⚠️  WARNING: GEMINI_API_KEY is not set in environment or .env!");
-        console.warn("Please set GEMINI_API_KEY=your_key to execute real LLM calls.\n");
-    }
+console.log("🧪 Testing Gemini connection...\n");
 
-    try {
-        const agent = new CodeGenAgent();
+try {
+    const response = await llm.invoke([
+        new HumanMessage(
+            'Reply with ONLY this JSON, nothing else: {"status": "working", "model": "gemini-1.5-flash"}'
+        ),
+    ]);
 
-        const mockFrictionContext = {
-            cognitiveLoadScore: 84,
-            frictionPoint: {
-                fieldId: "annualIncome",
-                fieldLabel: "Net Owner Annual Income",
-                fieldType: "number",
-            },
-            userBehavior: {
-                rageClicks: 4,
-                hesitationMs: 9500,
-                cursorErraticness: 42,
-            },
-            currentFormSchema: {
-                title: "Commercial Loan Application",
-                fields: [
-                    { id: "businessLegalName", label: "Business Legal Name", type: "text" },
-                    { id: "annualIncome", label: "Net Owner Annual Income", type: "number" },
-                    { id: "requestedAmount", label: "Loan Amount ($)", type: "number" },
-                ],
-            },
-            sessionContext: {
-                taskGoal: "Complete Loan Application",
-                completedFields: { businessLegalName: "Acme Corp" },
-                remainingFields: ["annualIncome", "requestedAmount"],
-            },
-        };
-
-        console.log("🚀 Invoking CodeGenAgent.generateComponent()...");
-        const result = await agent.generateComponent(mockFrictionContext);
-
-        console.log("\n================ GENERATION RESULT ================");
-        console.log("Component Name:", result.componentName);
-        console.log("Reasoning:     ", result.reasoning);
-        console.log("Generation Time:", `${result.generationTimeMs}ms`);
-        console.log("Code Preview (first 250 chars):\n", result.code.slice(0, 250), "...");
-        console.log("===================================================\n");
-        console.log("✅ Gemini CodeGen test completed successfully!");
-    } catch (error) {
-        console.error("❌ Test failed:", error.message);
-    }
+    console.log("✅ Gemini is connected and working!");
+    console.log("Response:", response.content);
+    console.log("\n🚀 You can now run: npm run dev");
+} catch (error) {
+    console.error("❌ Connection FAILED:", error.message);
+    console.error("\nCheck:");
+    console.error("  1. GEMINI_API_KEY is set correctly in .env");
+    console.error("  2. Your API key starts with 'AIzaSy...'");
+    console.error("  3. You have internet connection");
+    console.error("  4. npm install has been run");
 }
-
-runGeminiTest();
