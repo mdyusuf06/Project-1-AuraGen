@@ -329,6 +329,29 @@ export const staggerItem = {
 };
 
 /**
+ * Final Review Screen Card Variant (Smooth subtle scale-in with spring)
+ */
+export const reviewCardVariant = {
+  initial: { opacity: 0, scale: 0.97, y: 12 },
+  animate: {
+    opacity: 1,
+    scale: 1,
+    y: 0,
+    transition: {
+      opacity: { duration: 0.25 },
+      scale: springTransition,
+      y: springTransition
+    }
+  },
+  exit: {
+    opacity: 0,
+    scale: 0.98,
+    y: -8,
+    transition: { duration: 0.18, ease: "easeIn" }
+  }
+};
+
+/**
  * Returns an accessible variant adjusted for reduced-motion preferences.
  * When reduceMotion is true, scales and translations are zeroed out while smooth
  * opacity fades are preserved.
