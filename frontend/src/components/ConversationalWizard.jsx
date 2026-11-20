@@ -100,7 +100,6 @@ export default function ConversationalWizard({
 
   return (
     <motion.div
-      layoutId="auragen-form-card"
       variants={wizardMorphVariant}
       initial="initial"
       animate="animate"
@@ -111,23 +110,23 @@ export default function ConversationalWizard({
       <div className="bg-gradient-to-r from-indigo-900 via-indigo-950 to-slate-950 text-white p-6 sm:p-7 flex flex-wrap items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1.5">
-            <span
+            <motion.span
               layoutId="auragen-badge"
               className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-indigo-500/30 text-indigo-300 border border-indigo-400/40"
             >
               AuraGen Guided Assistant
-            </span>
+            </motion.span>
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/40">
               Friction Resolved ({score} pts)
             </span>
           </div>
 
-          <h2
+          <motion.h2
             layoutId="auragen-title"
             className="text-xl sm:text-2xl font-black tracking-tight text-white flex items-center gap-2"
           >
             Guided Assistance: {formattedField}
-          </h2>
+          </motion.h2>
           <p className="text-xs text-slate-300 mt-0.5">
             We simplified the 21-field form into 2 quick steps. All previously entered data was preserved.
           </p>
