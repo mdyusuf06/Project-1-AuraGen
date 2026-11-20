@@ -1,98 +1,177 @@
 // ============================================================
-// TEST CLIENT — Simulates Frontend Telemetry WebSocket Client
-// Run with: node test-client.js
+// FULL PIPELINE TEST CLIENT
+// Simulates a frustrated user and tests the complete backend.
+// Usage: node test-client.js  (run after: npm run dev)
 // ============================================================
 
-import { WebSocket } from "ws";
+import WebSocket from "ws";
 
-const WS_PORT = process.env.WS_PORT || 8080;
-const WS_URL = process.env.WS_URL || `ws://localhost:${WS_PORT}`;
-
-console.log("=================================================");
-console.log(`📡 AuraGen Test Client connecting to ${WS_URL}`);
-console.log("=================================================");
-
+const WS_URL = "ws://localhost:8080/ws";
 const ws = new WebSocket(WS_URL);
 
+console.log(`\n🧪 AuraGen Backend Full Test\n${"═".repeat(50)}`);
+console.log(`Connecting to ${WS_URL}...\n`);
+
 ws.on("open", () => {
-    console.log("✅ Connected to AuraGen Backend Gateway");
+    console.log("✅ Connected to AuraGen Backend\n");
 
-    const sessionId = `test_sess_${Date.now()}`;
-
-    // 1. Send normal telemetry (low cognitive load)
-    console.log("\n[1] Sending low cognitive load telemetry (score: 25)...");
-    ws.send(
-        JSON.stringify({
-            type: "telemetry",
-            sessionId,
-            timestamp: Date.now(),
-            metrics: {
-                mouseVelocity: 150,
-                hesitationMs: 800,
-                rageClicks: 0,
-                clickErrorRate: 0.0,
-            },
-            cognitiveLoadScore: 25,
-            activeField: "businessLegalName",
-        })
-    );
-
-    // 2. Send high friction spike telemetry (score >= 70) after 1.5 seconds
+    // ── STEP 1: Send a DOM context snapshot (Week 3) ───────────
     setTimeout(() => {
-        console.log("\n[2] 🚨 Sending HIGH cognitive friction telemetry spike (score: 88)...");
-        ws.send(
-            JSON.stringify({
-                type: "telemetry",
-                sessionId,
-                timestamp: Date.now(),
-                metrics: {
-                    mouseVelocity: 520,
-                    hesitationMs: 12000,
-                    rageClicks: 6,
-                    clickErrorRate: 0.45,
+        console.log("📸 Sending DOM context snapshot...");
+        ws.send(JSON.stringify({
+            type: "DOM_CONTEXT_UPDATE",
+            payload: {
+                formData: {
+                    legal_entity_name: "Acme Corporation LLC",
+                    business_address: "123 Main Street, Austin TX",
                 },
-                cognitiveLoadScore: 88,
-                activeField: "annualIncome",
-                formStateSnapshot: {
-                    values: {
-                        businessLegalName: "Apex Meridian Logistics LLC",
-                        taxIdentificationNumber: "84-2910482",
+                fieldErrors: {
+                    tax_identification_number: "Format must be XX-XXXXXXX (e.g. 12-3456789)",
+                },
+                formSchema: [
+                    { id: "legal_entity_name", label: "Legal Entity Name", type: "text", required: true },
+                    { id: "tax_identification_number", label: "Tax Identification Number (TIN/EIN)", type: "text", required: true },
+                    { id: "fiscal_year_end", label: "Fiscal Year End Date", type: "date", required: true },
+                    { id: "primary_naics_code", label: "Primary NAICS Industry Code", type: "select", required: true },
+                    { id: "annual_revenue_usd", label: "Annual Revenue (USD)", type: "number", required: true },
+                ],
+                activeFieldId: "tax_identification_number",
+                touchedFields: ["legal_entity_name", "tax_identification_number"],
+                scrollPosition: 120,
+                viewportHeight: 768,
+                cognitiveLoadScore: 0,
+            },
+        }));
+    }, 500);
+
+    // ── STEP 2: Send high-friction telemetry (triggers pipeline) ─
+    setTimeout(() => {
+        console.log("🚨 Sending high-friction telemetry...\n");
+        ws.send(JSON.stringify({
+            type: "FRICTION_TELEMETRY",
+            payload: {
+                telemetry: {
+                    rageClicks: 4,            // 40 pts
+                    hesitationMs: 12000,      // ~22 pts
+                    cursorErraticness: 75,    // ~22 pts
+                    // Total ≈ 84/100 → TRIGGERS
+                },
+                frictionContext: {
+                    frictionPoint: {
+                        fieldId: "tax_identification_number",
+                        fieldLabel: "Tax Identification Number (TIN/EIN)",
+                        fieldType: "text",
                     },
-                    fieldMetadata: [
-                        { id: "businessLegalName", label: "Business Legal Name", type: "text" },
-                        { id: "annualIncome", label: "Net Owner Annual Income", type: "number" },
-                        { id: "requestedFacilityAmount", label: "Requested Credit Facility ($)", type: "number" },
+                    userBehavior: {
+                        rageClicks: 4,
+                        hesitationMs: 12000,
+                        cursorErraticness: 75,
+                    },
+                    currentFormSchema: [
+                        { id: "legal_entity_name", label: "Legal Entity Name", type: "text", required: true },
+                        { id: "tax_identification_number", label: "Tax Identification Number", type: "text", required: true },
+                        { id: "fiscal_year_end", label: "Fiscal Year End", type: "date", required: true },
+                        { id: "primary_naics_code", label: "NAICS Industry Code", type: "select", required: true },
+                        { id: "annual_revenue_usd", label: "Annual Revenue (USD)", type: "number", required: true },
                     ],
+                    sessionContext: {
+                        taskGoal: "Complete business loan application",
+                        completedFields: ["legal_entity_name", "business_address"],
+                        remainingFields: [
+                            "tax_identification_number",
+                            "fiscal_year_end",
+                            "primary_naics_code",
+                            "annual_revenue_usd",
+                        ],
+                    },
                 },
-            })
-        );
+            },
+        }));
     }, 1500);
+
+    // ── STEP 3: Request cache stats (Week 4) ──────────────────
+    setTimeout(() => {
+        console.log("📊 Requesting cache stats...");
+        ws.send(JSON.stringify({ type: "CACHE_STATS_REQUEST" }));
+    }, 60000); // After 60s — component should be cached by then
 });
 
+// ── Handle all responses ─────────────────────────────────────
 ws.on("message", (data) => {
-    try {
-        const payload = JSON.parse(data.toString());
-        console.log("\n📥 Received message from server:", payload.type);
+    const msg = JSON.parse(data.toString());
 
-        if (payload.type === "component") {
-            console.log("✨ GENERATIVE UI COMPONENT RECEIVED!");
-            console.log("Component Name:", payload.componentName || "GeneratedComponent");
-            console.log("Reasoning:     ", payload.reasoning || "N/A");
-            console.log("Code Length:   ", payload.code ? payload.code.length : 0, "characters");
-            console.log("\nTest completed successfully!");
-            ws.close();
-        } else {
-            console.log("Payload:", payload);
-        }
-    } catch {
-        console.log("Raw message received:", data.toString());
+    console.log(`\n${"─".repeat(50)}`);
+    console.log(`📨 EVENT: ${msg.type}`);
+    console.log(`${"─".repeat(50)}`);
+
+    switch (msg.type) {
+        case "CONNECTION_ESTABLISHED":
+            console.log(`Session ID: ${msg.sessionId}`);
+            console.log(`Features: ${msg.features?.join(", ")}`);
+            break;
+
+        case "CONTEXT_UPDATED":
+            console.log(`✅ Context saved — ${msg.savedFieldCount} fields`);
+            console.log(`Active field: ${msg.activeField}`);
+            break;
+
+        case "COGNITIVE_LOAD_SCORE":
+            console.log(`Score: ${msg.cognitiveLoadScore}/100`);
+            console.log(`Breakdown:`, msg.breakdown);
+            console.log(`Should trigger: ${msg.shouldTrigger ? "YES 🚨" : "NO ✅"}`);
+            break;
+
+        case "GENERATION_STARTED":
+            console.log(`Message: ${msg.message}`);
+            console.log(`From cache: ${msg.fromCache ? "YES ⚡" : "NO"}`);
+            console.log(`Streaming: ${msg.streaming ? "YES" : "NO"}`);
+            break;
+
+        case "STREAM_CHUNK":
+            // Show streaming progress without flooding the console
+            if (msg.chunkIndex % 20 === 0) {
+                process.stdout.write(
+                    `\r🌊 Streaming... ${msg.totalCharsReceived} chars received`
+                );
+            }
+            break;
+
+        case "COMPONENT_UPDATE":
+            console.log(`\n✅ COMPONENT DELIVERED!`);
+            console.log(`Name: ${msg.componentName}`);
+            console.log(`Reasoning: ${msg.reasoning}`);
+            console.log(`Code size: ${msg.metadata.codeSizeBytes} bytes`);
+            console.log(`Generation time: ${msg.metadata.generationTimeMs}ms`);
+            console.log(`From cache: ${msg.metadata.fromCache}`);
+            console.log(`\nCode preview:\n${msg.code.substring(0, 400)}...`);
+            break;
+
+        case "GENERATION_FAILED":
+            console.log(`❌ Generation failed: ${msg.reason}`);
+            console.log(`Fallback strategy: ${msg.fallbackStrategy}`);
+            if (msg.violations?.length) {
+                console.log(`Violations:`, msg.violations);
+            }
+            break;
+
+        case "CACHE_STATS":
+            console.log(`Cache stats:`, msg.stats);
+            break;
+
+        case "ERROR":
+            console.log(`❌ Error [${msg.code}]: ${msg.detail}`);
+            break;
+
+        default:
+            console.log(JSON.stringify(msg, null, 2));
     }
 });
 
 ws.on("error", (err) => {
     console.error("❌ WebSocket error:", err.message);
+    console.error("Is the server running? Run: npm run dev");
 });
 
-ws.on("close", (code, reason) => {
-    console.log(`🔌 WebSocket connection closed (${code}): ${reason || "Normal closure"}`);
+ws.on("close", () => {
+    console.log("\n🔌 Connection closed");
 });
