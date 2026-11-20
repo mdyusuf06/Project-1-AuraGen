@@ -203,9 +203,8 @@ export default function ConversationalWizard({
                     color: isDone || isActive ? "#ffffff" : "#64748b"
                   }}
                   transition={springTransition}
-                  className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shadow-sm ${
-                    isDone ? "cursor-pointer hover:opacity-80" : ""
-                  }`}
+                  className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shadow-sm ${isDone ? "cursor-pointer hover:opacity-80" : ""
+                    }`}
                 >
                   {isDone ? "✓" : s.num}
                 </motion.button>
@@ -514,8 +513,8 @@ export default function ConversationalWizard({
                   {currentStep === 1
                     ? "Continue to Step 2 →"
                     : currentStep === 2
-                    ? "Proceed to Review →"
-                    : "Confirm & Merge into Application ✓"}
+                      ? "Proceed to Review →"
+                      : "Confirm & Merge into Application ✓"}
                 </button>
               </div>
             </div>
