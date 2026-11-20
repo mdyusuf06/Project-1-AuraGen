@@ -17,14 +17,14 @@ export function WizardErrorFallback({ onRetry, onRestoreOriginal }) {
     "div",
     {
       className:
-        "bg-white border border-rose-200 rounded-3xl shadow-xl overflow-hidden min-h-[480px] flex flex-col justify-between"
+        "bg-[#11172A] border border-rose-500/30 rounded-3xl shadow-2xl overflow-hidden min-h-[480px] flex flex-col justify-between text-slate-100 backdrop-blur-xl"
     },
     // Header
     React.createElement(
       "div",
       {
         className:
-          "bg-gradient-to-r from-slate-900 via-rose-950 to-slate-900 text-white p-6 sm:p-7 flex flex-wrap items-center justify-between gap-4"
+          "bg-gradient-to-r from-[#0D1220] via-rose-950/60 to-[#171E33] border-b border-rose-500/20 p-6 sm:p-7 flex flex-wrap items-center justify-between gap-4"
       },
       React.createElement(
         "div",
@@ -67,7 +67,7 @@ export function WizardErrorFallback({ onRetry, onRestoreOriginal }) {
         "div",
         {
           className:
-            "w-16 h-16 rounded-2xl bg-rose-50 text-rose-600 border border-rose-200/80 flex items-center justify-center text-3xl shadow-sm"
+            "w-16 h-16 rounded-2xl bg-rose-500/20 text-rose-400 border border-rose-500/40 flex items-center justify-center text-3xl shadow-[0_0_20px_rgba(244,63,94,0.3)]"
         },
         "🛡️"
       ),
@@ -76,12 +76,12 @@ export function WizardErrorFallback({ onRetry, onRestoreOriginal }) {
         { className: "space-y-2 max-w-md" },
         React.createElement(
           "h3",
-          { className: "text-lg font-bold text-slate-900" },
+          { className: "text-lg font-bold text-white" },
           "We ran into an unexpected issue"
         ),
         React.createElement(
           "p",
-          { className: "text-xs sm:text-sm text-slate-600 leading-relaxed" },
+          { className: "text-xs sm:text-sm text-slate-300 leading-relaxed" },
           "We encountered a temporary problem while rendering the simplified assistant. Don't worry—your previously entered form data is completely safe and preserved."
         )
       ),
@@ -108,7 +108,7 @@ export function WizardErrorFallback({ onRetry, onRestoreOriginal }) {
                 type: "button",
                 onClick: onRestoreOriginal,
                 className:
-                  "px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 border border-slate-200 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                  "px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 border border-slate-700 hover:border-slate-500 transition-all hover:scale-[1.02] active:scale-[0.98]"
               },
               "Return to Original Form"
             )
@@ -120,7 +120,7 @@ export function WizardErrorFallback({ onRetry, onRestoreOriginal }) {
       "div",
       {
         className:
-          "px-6 sm:px-8 py-3.5 bg-slate-50 border-t border-slate-100 text-center text-[11px] text-slate-500"
+          "px-6 sm:px-8 py-3.5 bg-[#0D1220]/60 border-t border-slate-800 text-center text-[11px] text-slate-400"
       },
       "AuraGen Self-Healing Resilience Layer • Data safely preserved in memory"
     )

@@ -26,14 +26,14 @@ export function WizardLoadingSkeleton({
       animate: "animate",
       exit: "exit",
       className:
-        "bg-white border border-indigo-200/80 rounded-3xl shadow-xl overflow-hidden min-h-[520px] flex flex-col justify-between"
+        "bg-[#11172A] border border-indigo-500/30 rounded-3xl shadow-2xl overflow-hidden min-h-[520px] flex flex-col justify-between text-slate-100 backdrop-blur-xl"
     },
     // Header Skeleton Bar
     React.createElement(
       "div",
       {
         className:
-          "bg-gradient-to-r from-indigo-900 via-indigo-950 to-slate-950 text-white p-6 sm:p-7 space-y-3"
+          "bg-gradient-to-r from-[#0D1220] via-[#11172A] to-[#171E33] border-b border-indigo-500/20 p-6 sm:p-7 space-y-3"
       },
       React.createElement(
         "div",
@@ -61,10 +61,10 @@ export function WizardLoadingSkeleton({
           : null
       ),
       React.createElement("div", {
-        className: "h-7 w-64 bg-slate-800 rounded-xl animate-pulse"
+        className: "h-7 w-64 bg-slate-800/80 rounded-xl animate-pulse"
       }),
       React.createElement("div", {
-        className: "h-4 w-80 max-w-full bg-slate-800/80 rounded-lg animate-pulse"
+        className: "h-4 w-80 max-w-full bg-slate-800/50 rounded-lg animate-pulse"
       })
     ),
     // Stepper Skeleton Progress
@@ -72,33 +72,33 @@ export function WizardLoadingSkeleton({
       "div",
       {
         className:
-          "px-6 sm:px-8 py-3.5 bg-indigo-50/50 border-b border-indigo-100/60 flex items-center justify-between"
+          "px-6 sm:px-8 py-3.5 bg-[#0D1220]/80 border-b border-indigo-500/15 flex items-center justify-between"
       },
       React.createElement(
         "div",
         { className: "flex items-center gap-2" },
         React.createElement("div", {
-          className: "w-6 h-6 rounded-full bg-indigo-200 animate-pulse"
+          className: "w-6 h-6 rounded-full bg-indigo-900 animate-pulse"
         }),
         React.createElement("div", {
-          className: "h-3.5 w-28 bg-indigo-100 rounded animate-pulse"
+          className: "h-3.5 w-28 bg-slate-800 rounded animate-pulse"
         })
       ),
       React.createElement(
         "div",
-        { className: "w-20 sm:w-28 h-1.5 bg-indigo-100 rounded-full overflow-hidden" },
+        { className: "w-20 sm:w-28 h-1.5 bg-slate-800 rounded-full overflow-hidden" },
         React.createElement("div", {
-          className: "h-full bg-indigo-400/40 rounded-full w-1/2 animate-[shimmer_1.5s_infinite]"
+          className: "h-full bg-gradient-to-r from-[#8057FF] to-[#25D9E8] rounded-full w-1/2 animate-[shimmer_1.5s_infinite]"
         })
       ),
       React.createElement(
         "div",
         { className: "flex items-center gap-2" },
         React.createElement("div", {
-          className: "w-6 h-6 rounded-full bg-slate-200 animate-pulse"
+          className: "w-6 h-6 rounded-full bg-slate-800 animate-pulse"
         }),
         React.createElement("div", {
-          className: "h-3.5 w-28 bg-slate-100 rounded animate-pulse"
+          className: "h-3.5 w-28 bg-slate-800/60 rounded animate-pulse"
         })
       )
     ),
@@ -117,7 +117,7 @@ export function WizardLoadingSkeleton({
           "div",
           {
             className:
-              "w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-500 to-violet-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30"
+              "w-16 h-16 rounded-2xl bg-gradient-to-tr from-[#8057FF] to-[#25D9E8] flex items-center justify-center text-white shadow-lg shadow-indigo-500/30"
           },
           React.createElement(
             "svg",
@@ -146,22 +146,27 @@ export function WizardLoadingSkeleton({
           className: "absolute -inset-1 rounded-2xl bg-indigo-500/20 blur-md -z-10 animate-pulse"
         })
       ),
-      // Required Message Text
+      // Required Message Text per Task 1
       React.createElement(
         "div",
-        { className: "space-y-1.5 max-w-sm" },
+        { className: "space-y-2 max-w-sm" },
+        React.createElement(
+          "span",
+          { className: "inline-block px-3 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 mb-1" },
+          "AI Processing Status: Generating"
+        ),
         React.createElement(
           "h3",
-          { className: "text-lg font-bold text-slate-900 tracking-tight" },
+          { className: "text-lg font-bold text-white tracking-tight" },
           loadingMessage
         ),
         React.createElement(
           "p",
-          { className: "text-xs text-slate-500 leading-relaxed" },
-          "AI-assisted friction engine is tailoring a conversational step-by-step assistant for ",
+          { className: "text-xs text-slate-400 leading-relaxed" },
+          "Preparing your simplified experience... Tailoring a guided conversational assistant for ",
           React.createElement(
             "span",
-            { className: "font-semibold text-indigo-700" },
+            { className: "font-semibold text-cyan-300" },
             formattedField
           ),
           "."
@@ -172,10 +177,10 @@ export function WizardLoadingSkeleton({
         "div",
         { className: "w-full max-w-md space-y-3 pt-2" },
         React.createElement("div", {
-          className: "h-10 w-full bg-slate-100 rounded-xl animate-pulse"
+          className: "h-10 w-full bg-slate-900/90 border border-slate-800 rounded-xl animate-pulse"
         }),
         React.createElement("div", {
-          className: "h-10 w-full bg-slate-100 rounded-xl animate-pulse delay-75"
+          className: "h-10 w-full bg-slate-900/90 border border-slate-800 rounded-xl animate-pulse delay-75"
         })
       )
     ),
@@ -184,13 +189,13 @@ export function WizardLoadingSkeleton({
       "div",
       {
         className:
-          "px-6 sm:px-8 py-4 border-t border-slate-100 bg-slate-50/40 flex items-center justify-between"
+          "px-6 sm:px-8 py-4 border-t border-slate-800 bg-[#0D1220]/60 flex items-center justify-between"
       },
       React.createElement("div", {
-        className: "h-8 w-24 bg-slate-200 rounded-xl animate-pulse"
+        className: "h-8 w-24 bg-slate-800 rounded-xl animate-pulse"
       }),
       React.createElement("div", {
-        className: "h-9 w-36 bg-indigo-200 rounded-xl animate-pulse"
+        className: "h-9 w-36 bg-gradient-to-r from-indigo-600/40 to-violet-600/40 rounded-xl animate-pulse"
       })
     )
   );
