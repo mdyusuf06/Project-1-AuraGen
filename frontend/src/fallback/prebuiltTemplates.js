@@ -41,7 +41,7 @@ export function PrebuiltIncomeWizard({
     "div",
     {
       className:
-        "bg-white border border-amber-200/90 rounded-3xl shadow-xl overflow-hidden min-h-[520px] flex flex-col justify-between"
+        "bg-[#11172A] border border-amber-500/30 rounded-3xl shadow-2xl overflow-hidden min-h-[520px] flex flex-col justify-between text-slate-100 backdrop-blur-xl"
     },
     // Header
     React.createElement(
@@ -285,7 +285,7 @@ export function PrebuiltLoanWizard({
     "div",
     {
       className:
-        "bg-white border border-indigo-200/90 rounded-3xl shadow-xl overflow-hidden min-h-[520px] flex flex-col justify-between"
+        "bg-[#11172A] border border-indigo-500/30 rounded-3xl shadow-2xl overflow-hidden min-h-[520px] flex flex-col justify-between text-slate-100 backdrop-blur-xl"
     },
     // Header
     React.createElement(
@@ -416,7 +416,7 @@ export function PrebuiltQuickReviewWizard({
     "div",
     {
       className:
-        "bg-white border border-emerald-200/90 rounded-3xl shadow-xl overflow-hidden min-h-[520px] flex flex-col justify-between"
+        "bg-[#11172A] border border-emerald-500/30 rounded-3xl shadow-2xl overflow-hidden min-h-[520px] flex flex-col justify-between text-slate-100 backdrop-blur-xl"
     },
     React.createElement(
       "div",
