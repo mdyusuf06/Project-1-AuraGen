@@ -8,6 +8,7 @@ import FinancialForm from "../components/FinancialForm";
 import ConversationalWizard from "../components/ConversationalWizard";
 import SimplifyingOverlay from "../components/SimplifyingOverlay";
 import GeneratedCodeDrawer from "../components/GeneratedCodeDrawer";
+import TelemetryDebugPanel from "../components/TelemetryDebugPanel";
 import {
   ErrorBoundary,
   WizardLoadingSkeleton,
@@ -39,12 +40,19 @@ export default function AuraGenDemoPage() {
   const [sharedFormValues, setSharedFormValues] = useState(() => createInitialFormValues());
   const [wizardKey, setWizardKey] = useState(0);
 
+  // Accessibility & Diagnostics States (Commit 10)
+  const [ariaAnnouncement, setAriaAnnouncement] = useState("Commercial Credit application initialized.");
+  const [generationTiming, setGenerationTiming] = useState(null);
+  const [cachedStatus, setCachedStatus] = useState(null);
+
   // Fallback states & pre-built template storage
   const [activeFallbackTemplate, setActiveFallbackTemplate] = useState(null);
   const [fallbackNotification, setFallbackNotification] = useState(null);
 
   const overlayTimerRef = useRef(null);
   const loadingTimerRef = useRef(null);
+  const generationStartTimeRef = useRef(null);
+  const cardRegionRef = useRef(null);
 
   const sessionId = useMemo(() => {
     return `sess_${Math.random().toString(36).slice(2, 10)}`;
@@ -133,6 +141,10 @@ export default function AuraGenDemoPage() {
       `[Telemetry] 🚨 Cognitive Load Threshold Exceeded (${snapshot.cognitiveLoadScore} >= ${currentThreshold}) at "${snapshot.activeField}". Morphing UI...`
     );
 
+    // Track latency for diagnostic panel
+    generationStartTimeRef.current = Date.now();
+    setGenerationTiming(null);
+
     // Requirement 2: Display short "Simplifying this for you..." overlay before morphing
     setShowSimplifyingOverlay(true);
 
@@ -189,6 +201,28 @@ export default function AuraGenDemoPage() {
     };
   }, []);
 
+  // Requirement 1 & 2: Focus Management & ARIA Live Announcements
+  useEffect(() => {
+    if (viewMode === "form") {
+      setAriaAnnouncement("Returned to standard 21-field financial application. All entered values have been preserved.");
+    } else if (viewMode === "loading") {
+      setAriaAnnouncement("Preparing your simplified conversational assistant. Please wait.");
+    } else if (viewMode === "wizard") {
+      setAriaAnnouncement(`Form simplified into a guided 2-step assistant for ${activeField}. Focus moved to assistant.`);
+    } else if (viewMode === "fallback-template") {
+      setAriaAnnouncement("Pre-built verified assistance template activated. Focus moved to assistant.");
+    }
+
+    // Shift focus gently to the card container to guide keyboard and screen reader users
+    const focusTimer = setTimeout(() => {
+      if (cardRegionRef.current) {
+        cardRegionRef.current.focus({ preventScroll: true });
+      }
+    }, 80);
+
+    return () => clearTimeout(focusTimer);
+  }, [viewMode, activeField]);
+
   // Listen for WebSocket replies ({ type: "component", code }, validation_failed, fallback, error)
   useEffect(() => {
     const unsubscribe = onMessage((msg) => {
@@ -202,6 +236,19 @@ export default function AuraGenDemoPage() {
       handleFallbackMessage(msg);
 
       if (msg.type === "component" && typeof msg.code === "string") {
+        // Measure generation timing latency
+        if (generationStartTimeRef.current) {
+          const durationMs = Date.now() - generationStartTimeRef.current;
+          setGenerationTiming({
+            durationMs,
+            requestedAt: generationStartTimeRef.current,
+            completedAt: Date.now()
+          });
+        }
+        if (typeof msg.cached === "boolean") {
+          setCachedStatus(msg.cached);
+        }
+
         setReceivedComponents((prev) => [
           {
             code: msg.code,
@@ -228,10 +275,38 @@ export default function AuraGenDemoPage() {
     resetTelemetry();
   };
 
+  // Interactive developer triggers for testing fallback scenarios
+  const handleSimulateValidationFailed = () => {
+    startGeneration({ activeField });
+    setViewMode("loading");
+    setTimeout(() => {
+      handleFallbackMessage({
+        type: "validation_failed",
+        errors: [{ rule: "no-eval", message: "Banned syntax eval() detected by Pavilson validator." }]
+      });
+    }, 400);
+  };
+
+  const handleSimulateTimeout = () => {
+    startGeneration({ activeField });
+    setViewMode("loading");
+    // Timeout will automatically trigger in 4000ms
+  };
+
   const latestComponent = receivedComponents[0] || null;
 
   return (
     <main className="min-h-screen py-8 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto">
+      {/* Requirement 2: Screen Reader ARIA Live Region for UI Transitions */}
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {ariaAnnouncement}
+      </div>
+
       {/* Telemetry HUD Cockpit */}
       <TelemetryHUD
         wsStatus={wsStatus}
@@ -271,7 +346,7 @@ export default function AuraGenDemoPage() {
             <button
               type="button"
               onClick={handleRevertToOriginalForm}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-xs font-bold text-white shadow-md transition-all hover:scale-[1.02] active:scale-[0.98]"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-xs font-bold text-white shadow-md transition-all hover:scale-[1.02] active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none"
               title="Return to the complete 21-field financial form (preserves all data)"
             >
               <span>← Back to Original Form</span>
@@ -309,7 +384,7 @@ export default function AuraGenDemoPage() {
             <button
               type="button"
               onClick={() => setFallbackNotification(null)}
-              className="px-3 py-1 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 bg-white border border-slate-200 hover:bg-slate-50 transition-colors"
+              className="px-3 py-1 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 bg-white border border-slate-200 hover:bg-slate-50 transition-colors focus-visible:ring-2 focus-visible:ring-slate-400"
             >
               Dismiss
             </button>
@@ -356,7 +431,7 @@ export default function AuraGenDemoPage() {
             <button
               type="button"
               onClick={() => setIsDrawerOpen(true)}
-              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold text-white transition-colors"
+              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold text-white transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500"
             >
               Inspect Generated Code ({latestComponent.code.length} chars)
             </button>
@@ -368,11 +443,16 @@ export default function AuraGenDemoPage() {
         Requirements 1-8:
         - Reserved min-height container (min-h-[620px]) to prevent layout jumps
         - AnimatePresence mode="wait" for non-overlapping transitions
+        - Proper focus management via ref={cardRegionRef} tabIndex={-1}
         - Original form fades in and animates back using revertMorphVariant
         - Preserves all entered values bidirectionally (sharedFormValues passed to FinancialForm)
         - Clean restoration without page refresh
       */}
-      <div className="relative min-h-[620px]">
+      <div
+        ref={cardRegionRef}
+        tabIndex={-1}
+        className="relative min-h-[620px] focus:outline-none"
+      >
         <AnimatePresence mode="wait">
           {viewMode === "form" ? (
             <motion.div
@@ -469,6 +549,23 @@ export default function AuraGenDemoPage() {
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
         componentData={latestComponent}
+      />
+
+      {/* Requirement 6 & 7: Development Telemetry Debug Cockpit (Collapsible floating panel) */}
+      <TelemetryDebugPanel
+        score={score}
+        rawScore={rawScore}
+        threshold={currentThreshold}
+        uiMode={viewMode}
+        generationTiming={generationTiming}
+        cachedStatus={cachedStatus}
+        fallbackStatus={fallbackNotification}
+        activeField={activeField}
+        metrics={metrics}
+        isGenerating={isGenerating}
+        onResetTelemetry={handleManualReset}
+        onSimulateTimeout={handleSimulateTimeout}
+        onSimulateValidationFailure={handleSimulateValidationFailed}
       />
     </main>
   );

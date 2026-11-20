@@ -327,3 +327,18 @@ export const staggerItem = {
     transition: springTransition
   }
 };
+
+/**
+ * Returns an accessible variant adjusted for reduced-motion preferences.
+ * When reduceMotion is true, scales and translations are zeroed out while smooth
+ * opacity fades are preserved.
+ */
+export function getAccessibleVariant(variant, reduceMotion = false) {
+  if (!reduceMotion || !variant) return variant;
+  return {
+    ...variant,
+    initial: { ...(variant.initial || {}), x: 0, y: 0, scale: 1 },
+    animate: { ...(variant.animate || {}), x: 0, y: 0, scale: 1 },
+    exit: { ...(variant.exit || {}), x: 0, y: 0, scale: 1 }
+  };
+}

@@ -17,7 +17,14 @@ Standard enterprise forms are rigid. When a user struggles on a complex financia
   - Complex 21-field, 5-section financial application (`Personal`, `Employment`, `Income`, `Assets`, `Liabilities`) with full client-side validation.
   - Live Telemetry HUD & Week 1 Code Inspector Drawer.
 
-*(Note: Babel AST validation, in-browser dynamic compilation, DOM state preservation, Framer Motion morphing, and streaming fallbacks belong to Weeks 2–4.)*
+### Weeks 2, 3 & 4 Frontend Milestones (Raksha R. - Frontend Lead)
+- **Calibrated Behavioral Telemetry (`frontend/telemetry`)**: 10-second rolling window, multi-metric normalized weighting (variance: 0.25, direction reversals: 0.20, hesitation: 0.25, rage clicks: 0.20, click errors: 0.10), exponential smoothing, minimum interaction gate, 60s cooldown, dev confusion & calm simulator, and CSV time-series report.
+- **Dynamic Morphing & Step Navigation (`frontend/animation`)**: Framer Motion fluid form-to-wizard morphing (350ms form exit, spring entrance), directional step slide transitions, shared `layoutId` transitions, and full `prefers-reduced-motion` accessibility.
+- **Graceful Fallback UI (`frontend/fallback`)**: Shimmer loading skeleton, resilient ErrorBoundary with privacy-safe recovery UI, 4-second generation timeout, integration with Pavilson's pre-built wizard templates (`income-stepper`, `loan-details`, `quick-review`), and clean restoration to the original form if templates are unavailable.
+- **Persistent Animated Revert (`frontend/form`)**: Persistent "Back to Original Form" bar with 100% bidirectional form value preservation (restoring latest user updates), zero page reload, and WebSocket `{ type: "revert" }` protocol synchronization.
+- **Frontend Polish & Diagnostics**: Active focus management, ARIA live region transition announcements, keyboard navigation (`Escape`, `Enter`), responsive layouts (mobile/tablet/desktop), and collapsible dev Telemetry Debug Panel.
+
+*(For detailed architectural breakdown, see [docs/FRONTEND_MODULES.md](docs/FRONTEND_MODULES.md).)*
 
 ---
 

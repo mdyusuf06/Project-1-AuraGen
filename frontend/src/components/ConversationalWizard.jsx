@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import {
   wizardMorphVariant,
@@ -41,6 +41,17 @@ export default function ConversationalWizard({
 
   // Accessibility: detect OS reduced-motion preference
   const shouldReduceMotion = useReducedMotion();
+
+  // Requirement 3: Support keyboard shortcuts (Escape key reverts to original form)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") {
+        onRestoreOriginal?.();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onRestoreOriginal]);
 
   const [wizardValues, setWizardValues] = useState({
     ...initialValues,
