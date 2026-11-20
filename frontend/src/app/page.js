@@ -6,6 +6,7 @@ import { useTelemetry } from "../hooks/useTelemetry";
 import TelemetryHUD from "../components/TelemetryHUD";
 import FinancialForm from "../components/FinancialForm";
 import GeneratedCodeDrawer from "../components/GeneratedCodeDrawer";
+import { AnimatePresence, motion, slideInUp, fadeIn } from "../animation";
 
 const DEFAULT_THRESHOLD = Number(process.env.NEXT_PUBLIC_COGNITIVE_LOAD_THRESHOLD || 70);
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080";
@@ -112,30 +113,46 @@ export default function AuraGenDemoPage() {
         onOpenCodeDrawer={() => setIsDrawerOpen(true)}
       />
 
-      {latestComponent && (
-        <div className="mb-6 bg-indigo-50 border border-indigo-200 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 shadow-sm">
-          <div className="text-sm text-indigo-950">
-            <strong className="font-semibold">
-              AuraGen Self-Healing Payload Received!
-            </strong>{" "}
-            <span className="text-indigo-800">
-              Backend returned <code className="font-mono text-xs bg-indigo-100 px-1.5 py-0.5 rounded">{`{ type: "component", code }`}</code> ({latestComponent.code.length} chars). Week 2 will dynamically compile and swap this into the DOM.
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setIsDrawerOpen(true)}
-            className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold text-white transition-colors"
+      <AnimatePresence>
+        {latestComponent && (
+          <motion.div
+            key="self-healing-banner"
+            variants={slideInUp}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            className="mb-6 bg-indigo-50 border border-indigo-200 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 shadow-sm"
           >
-            Inspect Received Code
-          </button>
-        </div>
-      )}
+            <div className="text-sm text-indigo-950">
+              <strong className="font-semibold">
+                AuraGen Self-Healing Payload Received!
+              </strong>{" "}
+              <span className="text-indigo-800">
+                Backend returned <code className="font-mono text-xs bg-indigo-100 px-1.5 py-0.5 rounded">{`{ type: "component", code }`}</code> ({latestComponent.code.length} chars). Week 2 will dynamically compile and swap this into the DOM.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsDrawerOpen(true)}
+              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold text-white transition-colors"
+            >
+              Inspect Received Code
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      <FinancialForm
-        activeField={activeField}
-        onActiveFieldChange={setActiveField}
-      />
+      <motion.div
+        key="main-financial-form-container"
+        variants={fadeIn}
+        initial="initial"
+        animate="animate"
+      >
+        <FinancialForm
+          activeField={activeField}
+          onActiveFieldChange={setActiveField}
+        />
+      </motion.div>
 
       <GeneratedCodeDrawer
         isOpen={isDrawerOpen}
