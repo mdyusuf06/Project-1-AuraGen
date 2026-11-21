@@ -367,6 +367,43 @@ console.log("=================================================================")
   console.log("✅ Test 11 Passed: Telemetry snapshot fully compliant with backend WebSocket schema");
 }
 
+// -----------------------------------------------------------------------------
+// Test 12: Event Processing & Stability Safeguards
+// -----------------------------------------------------------------------------
+{
+  // 1. Exponential smoothing numerical resilience with NaN / Infinity / boundaries
+  const nanSmooth = applyExponentialSmoothing(NaN, 50);
+  assert.equal(nanSmooth, 50, "Smoothing with NaN previous score should cleanly fall back to clamped rawScore");
+
+  const rawNanSmooth = applyExponentialSmoothing(40, NaN);
+  assert.equal(rawNanSmooth, 40, "Smoothing with NaN raw score should preserve clamped prevScore");
+
+  const overflowSmooth = applyExponentialSmoothing(95, 150);
+  assert.ok(overflowSmooth <= 100 && overflowSmooth >= 95, "Out-of-range raw score must clamp cleanly within [0, 100]");
+
+  // 2. Normalization resilience with malformed or missing fields
+  const emptyNorm = normalizeTelemetryMetrics(null);
+  assert.equal(emptyNorm.velocityVariance, 0);
+  assert.equal(emptyNorm.hesitation, 0);
+  assert.equal(emptyNorm.rageClicks, 0);
+  assert.equal(emptyNorm.clickErrorRate, 0);
+  assert.equal(emptyNorm.directionChanges, 0);
+
+  // 3. Normalization resilience with infinite / negative metrics
+  const extremeNorm = normalizeTelemetryMetrics({
+    velocityVariance: Infinity,
+    hesitationMs: -500,
+    rageClicks: -1,
+    clickErrorRate: 99,
+    directionChanges: -10
+  });
+  assert.equal(extremeNorm.hesitation, 0, "Negative hesitation must clamp to 0");
+  assert.equal(extremeNorm.rageClicks, 0, "Negative rageClicks must clamp to 0");
+  assert.equal(extremeNorm.clickErrorRate, 100, "Excessive click error rate must clamp to 100");
+
+  console.log("✅ Test 12 Passed: Event processing & numerical stability safeguards verified");
+}
+
 console.log("\n=================================================================");
-console.log("🎉 All 11 Unit Tests Passed Successfully!");
+console.log("🎉 All 12 Unit Tests Passed Successfully!");
 console.log("=================================================================");

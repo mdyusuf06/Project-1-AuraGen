@@ -132,11 +132,19 @@ export function computeCognitiveLoadScore(metrics, customWeights = {}) {
  * Applies asymmetric exponential smoothing to prevent sudden score fluctuations.
  * Uses fast-attack (alpha ~ 0.45) for rising cognitive load to remain responsive,
  * and gentle decay (alpha ~ 0.65 - 0.75) for falling load to prevent UI flicker.
+ * Hardened for numerical stability against non-finite or out-of-range scores.
  */
 export function applyExponentialSmoothing(prevScore, rawScore, alpha = 0.65) {
-  if (typeof prevScore !== "number" || isNaN(prevScore)) return rawScore;
-  const effAlpha = rawScore > prevScore ? Math.min(alpha, 0.45) : alpha;
-  return Math.round(prevScore * effAlpha + rawScore * (1 - effAlpha));
+  if (typeof prevScore !== "number" || !Number.isFinite(prevScore) || isNaN(prevScore)) {
+    return typeof rawScore === "number" && Number.isFinite(rawScore) ? clamp(rawScore, 0, 100) : 0;
+  }
+  if (typeof rawScore !== "number" || !Number.isFinite(rawScore) || isNaN(rawScore)) {
+    return clamp(prevScore, 0, 100);
+  }
+  const clampedRaw = clamp(rawScore, 0, 100);
+  const clampedPrev = clamp(prevScore, 0, 100);
+  const effAlpha = clampedRaw > clampedPrev ? Math.min(alpha, 0.45) : alpha;
+  return Math.round(clampedPrev * effAlpha + clampedRaw * (1 - effAlpha));
 }
 
 /**
@@ -252,16 +260,16 @@ export function useTelemetry({
     lastThresholdFireTime: 0
   });
 
-  // Prune events outside the rolling window (10s)
+  // Prune events outside the rolling window (10s) with memory bounds stability
   const pruneOldEvents = useCallback(
     (now) => {
       const t = trackerRef.current;
       const cutoff = now - windowDurationMs;
 
-      t.velocitySamples = t.velocitySamples.filter((s) => s.time >= cutoff);
-      t.directionEvents = t.directionEvents.filter((d) => d.time >= cutoff);
-      t.clickEvents = t.clickEvents.filter((c) => c.time >= cutoff);
-      t.rageClickIncidents = t.rageClickIncidents.filter((r) => r.time >= cutoff);
+      t.velocitySamples = t.velocitySamples.filter((s) => s.time >= cutoff).slice(-250);
+      t.directionEvents = t.directionEvents.filter((d) => d.time >= cutoff).slice(-100);
+      t.clickEvents = t.clickEvents.filter((c) => c.time >= cutoff).slice(-50);
+      t.rageClickIncidents = t.rageClickIncidents.filter((r) => r.time >= cutoff).slice(-20);
     },
     [windowDurationMs]
   );
@@ -483,7 +491,10 @@ export function useTelemetry({
       const dy = e.clientY - t.lastSampleY;
       const dtSeconds = elapsed / 1000;
       const distance = Math.hypot(dx, dy);
-      const instantVelocity = distance / dtSeconds;
+      const instantVelocity =
+        dtSeconds > 0 && Number.isFinite(distance / dtSeconds)
+          ? Math.min(distance / dtSeconds, 15000)
+          : 0;
 
       t.smoothedVelocity = t.smoothedVelocity * 0.7 + instantVelocity * 0.3;
       t.velocitySamples.push({ time: wallNow, velocity: instantVelocity });
@@ -525,8 +536,13 @@ export function useTelemetry({
       t.lastInteractionTime = wallNow;
       t.manualOverrideScore = null;
 
-      const tag = e.target?.tagName?.toLowerCase() || "";
-      const isInteractive = [
+      const targetEl = e.target;
+      const closestInteractive =
+        targetEl?.closest?.(
+          'input, select, textarea, button, label, option, a, [role="button"], [role="link"], [role="checkbox"], [role="radio"]'
+        ) || null;
+      const tag = (targetEl?.tagName || "").toLowerCase();
+      const isDirectInteractive = [
         "input",
         "select",
         "textarea",
@@ -535,8 +551,10 @@ export function useTelemetry({
         "option",
         "a"
       ].includes(tag);
+      const isInteractive = Boolean(isDirectInteractive || closestInteractive);
       const isInvalidControl =
-        e.target?.getAttribute?.("aria-invalid") === "true";
+        targetEl?.getAttribute?.("aria-invalid") === "true" ||
+        closestInteractive?.getAttribute?.("aria-invalid") === "true";
       const isError = !isInteractive || isInvalidControl;
 
       t.clickEvents.push({ time: wallNow, x: e.clientX, y: e.clientY, isError });
