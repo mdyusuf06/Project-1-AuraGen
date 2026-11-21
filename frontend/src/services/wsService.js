@@ -4,6 +4,7 @@
  *  - Explicit connection state machine (CONNECTING, CONNECTED, RECONNECTING, DISCONNECTED)
  *  - Auto-reconnect with exponential backoff + jitter
  *  - Telemetry serialization supporting Sliding Window scores, directionChanges, clickErrorCount & formStateSnapshot
+ *  - Revert action signaling with bidirectional formValues synchronization
  *  - Pub/sub message subscription (`onMessage`)
  */
 
@@ -175,6 +176,7 @@ export function createAuraGenWsService(url, options = {}) {
       timestamp: Number(telemetry.timestamp || Date.now()),
       metrics: {
         mouseVelocity: Number(telemetry.metrics?.mouseVelocity ?? 0),
+        velocityVariance: Number(telemetry.metrics?.velocityVariance ?? 0),
         hesitationMs: Number(telemetry.metrics?.hesitationMs ?? 0),
         rageClicks: Number(telemetry.metrics?.rageClicks ?? 0),
         clickErrorRate: Number(telemetry.metrics?.clickErrorRate ?? 0),
@@ -211,6 +213,37 @@ export function createAuraGenWsService(url, options = {}) {
     return true;
   }
 
+  /**
+   * Sends a revert action payload to restore the original form and notify the backend.
+   * Requirement 8: Shared WebSocket protocol revert command.
+   * @param {string} sessionId
+   * @param {object} [formValues]
+   * @returns {boolean} True if sent
+   */
+  function sendRevert(sessionId, formValues) {
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+
+    const payload = {
+      type: "revert",
+      sessionId: String(sessionId || "anonymous"),
+      timestamp: Date.now()
+    };
+
+    if (formValues && typeof formValues === "object") {
+      payload.formValues = formValues;
+    }
+
+    socket.send(JSON.stringify(payload));
+    return true;
+  }
+
+  /**
+   * Subscribes to incoming parsed JSON messages from the WebSocket server.
+   * @param {function} callback
+   * @returns {function} Unsubscribe function
+   */
   function onMessage(callback) {
     if (typeof callback !== "function") return () => {};
     messageListeners.add(callback);
@@ -237,6 +270,7 @@ export function createAuraGenWsService(url, options = {}) {
     },
     getStatus: () => status,
     sendTelemetry,
+    sendRevert,
     onMessage,
     onStatusChange
   };

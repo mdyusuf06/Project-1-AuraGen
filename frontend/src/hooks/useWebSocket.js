@@ -58,6 +58,11 @@ export function useWebSocket(url = DEFAULT_WS_URL, options = {}) {
     return serviceRef.current.sendTelemetry(telemetryPayload);
   }, []);
 
+  const sendRevert = useCallback((sessionId, formValues) => {
+    if (!serviceRef.current) return false;
+    return serviceRef.current.sendRevert(sessionId, formValues);
+  }, []);
+
   const onMessage = useCallback((callback) => {
     if (typeof callback !== "function") return () => {};
 
@@ -83,6 +88,7 @@ export function useWebSocket(url = DEFAULT_WS_URL, options = {}) {
     reconnectAttempt,
     nextReconnectDelayMs,
     sendTelemetry,
+    sendRevert,
     onMessage,
     reconnect
   };

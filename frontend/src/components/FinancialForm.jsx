@@ -60,12 +60,23 @@ export default function FinancialForm({
   activeField,
   onActiveFieldChange,
   onFormContextChange,
-  initialValues = {}
+  onFormValuesChange,
+  initialValues = null,
+  formValues = null
 }) {
-  const [values, setValues] = useState(() => ({
-    ...createInitialFormValues(),
-    ...(initialValues || {})
-  }));
+  const [values, setValues] = useState(() => {
+    const base = createInitialFormValues();
+    const incoming = formValues || initialValues;
+    return incoming ? { ...base, ...incoming } : base;
+  });
+
+  // Synchronize values when incoming form state updates (e.g. after reverting from wizard)
+  useEffect(() => {
+    const incoming = formValues || initialValues;
+    if (incoming) {
+      setValues((prev) => ({ ...prev, ...incoming }));
+    }
+  }, [formValues, initialValues]);
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState({});
   const [submittedData, setSubmittedData] = useState(null);
@@ -108,6 +119,8 @@ export default function FinancialForm({
       errors
     });
 
+    onFormValuesChange?.(values);
+
     onFormContextChange?.({
       values,
       errors,
@@ -125,6 +138,7 @@ export default function FinancialForm({
     hoveredFieldId,
     focusedFieldId,
     activeFieldMeta,
+    onFormValuesChange,
     onFormContextChange
   ]);
 
@@ -399,14 +413,14 @@ export default function FinancialForm({
           <button
             type="button"
             onClick={handleReset}
-            className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-sm font-medium text-slate-700 transition-colors"
+            className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-sm font-medium text-slate-700 transition-colors focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:outline-none"
           >
             Clear All Fields
           </button>
 
           <button
             type="submit"
-            className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-sm font-semibold text-white shadow-sm transition-colors"
+            className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-sm font-semibold text-white shadow-sm transition-colors focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:outline-none"
           >
             Validate & Submit Application
           </button>

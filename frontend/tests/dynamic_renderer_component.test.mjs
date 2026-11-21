@@ -66,7 +66,7 @@ const fn = new Function("React", "require", "exports", "module", transpiled);
 fn(React, customRequire, exportsObj, moduleObj);
 
 const DynamicRenderer = moduleObj.exports.default || moduleObj.exports;
-const { DynamicRendererErrorBoundary } = moduleObj.exports;
+const { DynamicRendererErrorBoundary, GlowingSkeletonLoader } = moduleObj.exports;
 
 // -----------------------------------------------------------------------------
 // Test 1: Component Export and PropTypes Definition
@@ -196,6 +196,54 @@ const { DynamicRendererErrorBoundary } = moduleObj.exports;
   console.log("✅ Test 6 Passed: DynamicRendererErrorBoundary class verified.");
 }
 
+// -----------------------------------------------------------------------------
+// Test 7: GlowingSkeletonLoader Rendering & Shimmer Effect
+// -----------------------------------------------------------------------------
+{
+  assert.equal(typeof GlowingSkeletonLoader, "function", "GlowingSkeletonLoader must be exported");
+  const html = renderToString(React.createElement(GlowingSkeletonLoader, { minHeight: "460px" }));
+  assert.ok(html.includes("AuraGen AI Synthesis"), "Must display synthesis beacon title");
+  assert.ok(html.includes("animate-shimmer"), "Must contain glowing shimmer animation");
+  assert.ok(html.includes("min-height:460px") || html.includes("min-height: 460px"), "Must reserve min-height on skeleton");
+  console.log("✅ Test 7 Passed: GlowingSkeletonLoader renders with ambient glow and shimmer effects.");
+}
+
+// -----------------------------------------------------------------------------
+// Test 8: Container Layout Stability & Reserved minHeight (CLS Prevention)
+// -----------------------------------------------------------------------------
+{
+  const validCode = `
+    import React from "react";
+    export default function Card() { return <div>Loaded</div>; }
+  `;
+
+  const html = renderToString(
+    React.createElement(DynamicRenderer, {
+      code: validCode,
+      minHeight: "500px"
+    })
+  );
+
+  assert.ok(html.includes("min-height:500px") || html.includes("min-height: 500px"), "Container must apply reserved minHeight style");
+  assert.ok(html.includes("min-h-[460px]"), "Container must include default min-height Tailwind class");
+  console.log("✅ Test 8 Passed: Container reserves minHeight preventing Cumulative Layout Shift (CLS).");
+}
+
+// -----------------------------------------------------------------------------
+// Test 9: Default Glowing Skeleton When Code is Missing
+// -----------------------------------------------------------------------------
+{
+  const html = renderToString(
+    React.createElement(DynamicRenderer, {
+      code: ""
+    })
+  );
+
+  assert.ok(html.includes("AuraGen AI Synthesis"), "Default state without fallback must render GlowingSkeletonLoader");
+  assert.ok(html.includes("aria-busy=\"true\""), "Skeleton must indicate busy status");
+  console.log("✅ Test 9 Passed: Default GlowingSkeletonLoader mounts seamlessly when awaiting code.");
+}
+
 console.log("\n===============================================================");
-console.log("🎉 All 6 DynamicRenderer Client Component Tests Passed!");
+console.log("🎉 All 9 DynamicRenderer Client Component Tests Passed!");
 console.log("===============================================================");

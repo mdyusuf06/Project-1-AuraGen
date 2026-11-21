@@ -9,7 +9,7 @@
 
 Standard enterprise forms are rigid. When a user struggles on a complex financial disclosure form, AuraGen tracks behavioral friction signals (mouse velocity, hesitation time, rage clicks, click-error rate) to calculate a real-time **Cognitive Load Score (0–100)**. When the score crosses the configured threshold (`>= 70`), the Node.js WebSocket server invokes `generateComponent()` and pushes a custom, simplified React wizard component (`{ type: "component", code }`) back to the browser.
 
-### Week 1–2/3 Bridge Architecture
+### Week 1 Scope & Bridge Architecture
 - **Backend (`/backend`)**:
   - **Zod Payload Validation (`src/validators/telemetryValidator.js`)**: Strict `zod` schema validating telemetry packets (`cursor`, `metrics`, `instantScore`, `rollingAverageScore`, `activeFieldId`, `formStateSnapshot`).
   - **In-Memory LRU Session Store (`src/store/sessionStore.js`)**: Aggregates per-`sessionId` telemetry over time, tracks per-field friction hotspots, and exposes `GET /api/sessions/:sessionId/metrics` (plus `GET /api/sessions`).
@@ -19,6 +19,15 @@ Standard enterprise forms are rigid. When a user struggles on a complex financia
   - **5-Second Sliding Window Telemetry & State Serialization (`src/hooks/useTelemetry.js`)**: Tracks velocity, hesitation, rage clicks, click errors, computes both `instantScore` and 5s `rollingAverageScore` to prevent false positives, and serializes `formStateSnapshot` (typed values + DOM context) when threshold is breached.
   - **Field-Level Financial Form (`src/components/FinancialForm.jsx`)**: 21-field, 5-section financial disclosure form (`Personal`, `Employment`, `Income`, `Assets`, `Liabilities`) with `onFocus`, `onBlur`, and `onMouseMove` tracking.
   - **Live Mouse Trajectory Heatmap & Floating Debug HUD (`src/components/TelemetryHUD.jsx`)**: Togglable full-screen HTML5 `<canvas>` (`pointer-events: none`) rendering smooth green-to-red cursor trajectories + a floating corner Debug HUD with live metrics and Session Store API polling.
+
+### Weeks 2, 3 & 4 Frontend Milestones (Raksha R. - Frontend Lead)
+- **Calibrated Behavioral Telemetry (`frontend/telemetry`)**: 10-second rolling window, multi-metric normalized weighting (variance: 0.25, direction reversals: 0.20, hesitation: 0.25, rage clicks: 0.20, click errors: 0.10), exponential smoothing, minimum interaction gate, 60s cooldown, dev confusion & calm simulator, and CSV time-series report.
+- **Dynamic Morphing & Step Navigation (`frontend/animation`)**: Framer Motion fluid form-to-wizard morphing (350ms form exit, spring entrance), directional step slide transitions, shared `layoutId` transitions, and full `prefers-reduced-motion` accessibility.
+- **Graceful Fallback UI (`frontend/fallback`)**: Shimmer loading skeleton, resilient ErrorBoundary with privacy-safe recovery UI, 4-second generation timeout, integration with Pavilson's pre-built wizard templates (`income-stepper`, `loan-details`, `quick-review`), and clean restoration to the original form if templates are unavailable.
+- **Persistent Animated Revert (`frontend/form`)**: Persistent "Back to Original Form" bar with 100% bidirectional form value preservation (restoring latest user updates), zero page reload, and WebSocket `{ type: "revert" }` protocol synchronization.
+- **Frontend Polish & Diagnostics**: Active focus management, ARIA live region transition announcements, keyboard navigation (`Escape`, `Enter`), responsive layouts (mobile/tablet/desktop), and collapsible dev Telemetry Debug Panel.
+
+*(For detailed architectural breakdown, see [docs/FRONTEND_MODULES.md](docs/FRONTEND_MODULES.md).)*
 
 ---
 
@@ -161,7 +170,7 @@ npm run build:frontend
 ### Interactive Demo Walkthrough
 1. Open `http://localhost:3000` in your browser.
 2. Observe the **TelemetryHUD** banner at the top showing `WS Connected` and live velocity/hesitation metrics streaming to the backend terminal.
-3. Interact with the 21-field **Commercial Credit & Wealth Disclosure** form (test validation by clicking **Validate & Submit Application** or clicking **Prefill Partial Data**).
+3. Interact with the 21-field **Commercial Credit & Wealth Disclosure** form (test validation by clicking **Validate and Submit Application** or clicking **Prefill Partial Data**).
 4. Click **Simulate Friction Spike** (or rapidly click 3+ times in one spot / wait idle on a field) to push `cognitiveLoadScore >= 70`.
 5. Watch the backend console log the threshold breach and immediately push `{ type: "component", code }` back to the frontend, opening the **Generated Component Preview** drawer.
 

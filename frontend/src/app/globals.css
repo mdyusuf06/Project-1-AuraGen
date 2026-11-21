@@ -2,9 +2,49 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --bg-primary: #080B16;
+  --bg-secondary: #0D1220;
+  --surface-card: #11172A;
+  --surface-elevated: #171E33;
+  --color-violet: #8057FF;
+  --color-lavender: #B69CFF;
+  --color-cyan: #25D9E8;
+  --color-success: #38D9A9;
+  --color-error: #FF647C;
+}
+
 @layer base {
   body {
-    @apply bg-slate-50 text-slate-900 antialiased;
+    @apply bg-[#080B16] text-[#F4F3FF] antialiased selection:bg-[#8057FF]/30 selection:text-white min-h-screen;
   }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 0.6;
+    filter: drop-shadow(0 0 15px rgba(128, 87, 255, 0.35));
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 25px rgba(37, 217, 232, 0.5));
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2.5s ease-in-out infinite;
 }
 
