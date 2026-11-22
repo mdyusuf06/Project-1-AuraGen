@@ -1,126 +1,269 @@
 # AuraGen Frontend Engineering Documentation
+
 **Author:** Raksha R. (Senior Frontend Lead – Telemetry, Animation, Fallback UI, and Polish)  
-**Modules Covered:** Weeks 2, 3, and 4
+**Modules Covered:** Weeks 2, 3, and 4  
+**Branch:** `raksha-telemetry`  
+**Repository:** `https://github.com/mdyusuf06/Project-1-AuraGen.git`
 
 ---
 
 ## Table of Contents
-1. [Module 1: frontend/telemetry](#module-1-frontendtelemetry)
-2. [Module 2: frontend/animation](#module-2-frontendanimation)
-3. [Module 3: frontend/fallback](#module-3-frontendfallback)
-4. [Module 4: Frontend Polish & Accessibility](#module-4-frontend-polish--accessibility)
-5. [Automated Verification & Test Matrix](#automated-verification--test-matrix)
+1. [Executive Summary & Architectural Role](#1-executive-summary--architectural-role)
+2. [Module 1: frontend/telemetry – Psychomotor Telemetry & Cognitive Load Engine](#2-module-1-frontendtelemetry--psychomotor-telemetry--cognitive-load-engine)
+3. [Module 2: frontend/animation – Fluid Morphing & Step Navigation](#3-module-2-frontendanimation--fluid-morphing--step-navigation)
+4. [Module 3: frontend/fallback – Resilient UI Fallbacks & State Preservation](#4-module-3-frontendfallback--resilient-ui-fallbacks--state-preservation)
+5. [Module 4: Frontend Polish, Accessibility & Developer Telemetry HUD](#5-module-4-frontend-polish-accessibility--developer-telemetry-hud)
+6. [Design System & Theme Tokens](#6-design-system--theme-tokens)
+7. [Automated Test Matrix & Verification Coverage](#7-automated-test-matrix--verification-coverage)
+8. [Cross-Module Interface Contracts](#8-cross-module-interface-contracts)
 
 ---
 
-## Module 1: frontend/telemetry
+## 1. Executive Summary & Architectural Role
 
-### Architecture & Calibration
-The telemetry engine captures real-time cursor dynamics, interaction cadence, hesitation intervals, and frustration signals inside [useTelemetry.js](file:///c:/Users/Admin/OneDrive/Desktop/Project-1-AuraGen/frontend/src/hooks/useTelemetry.js).
+AuraGen is an adaptive Generative UI system designed to eliminate user friction in complex digital forms. As Senior Frontend Lead, Raksha R. owns four foundational frontend engineering pillars:
 
-- **Rolling 10-Second Time Window:**
-  Samples are tracked in a FIFO queue pruned to exactly 10,000 ms.
-- **Calibrated Multi-Metric Weights:**
-  - Velocity Standard Deviation / Variance: `0.25`
-  - Direction Reversals (Jitter / erratic path shifts): `0.20`
-  - Hesitation / Pause Durations: `0.25`
-  - Rage Clicks (rapid repeated clicks within radius): `0.20`
-  - Form Click Errors / Misclicks: `0.10`
-- **Exponential Smoothing:**
-  $$\text{SmoothedScore}_t = \alpha \cdot \text{RawScore}_t + (1 - \alpha) \cdot \text{SmoothedScore}_{t-1}$$  
-  $(\alpha = 0.35)$ prevents jarring spikes while preserving acute sensitivity to sustained confusion.
-- **Trigger Gate & Cooldown:**
-  - Default Confusion Threshold: `70`
-  - Cooldown Window: `60 seconds` post-trigger to eliminate redundant code-gen requests.
-  - Minimum Activity Requirement: Requires at least 2 real interactions before activating.
-
-### Development Confusion & Calm User Simulator
-- Located in [telemetrySimulator.js](file:///c:/Users/Admin/OneDrive/Desktop/Project-1-AuraGen/frontend/src/utils/telemetrySimulator.js).
-- **Simulate Confused User:** Dispatches high-frequency jitter paths, rapid micro-pauses, and concentrated rage clicks (demonstrating a sharp spike $\ge 70$).
-- **Simulate Calm User:** Dispatches smooth cubic bezier trajectories with normal field progression (score remains baseline $< 25$).
-- **Export CSV Telemetry Report:** Dumps full 10-second rolling time series with raw and normalized metrics for analytics audit.
-
----
-
-## Module 2: frontend/animation
-
-### Architecture & Primitives
-Powered by Framer Motion, implemented in [variants.js](file:///c:/Users/Admin/OneDrive/Desktop/Project-1-AuraGen/frontend/src/animation/variants.js) and [AnimatedTransition.js](file:///c:/Users/Admin/OneDrive/Desktop/Project-1-AuraGen/frontend/src/animation/AnimatedTransition.js).
-
-- **Dynamic Form-to-Wizard Morph Transition:**
-  - When cognitive load crosses threshold, a short 1.2s glassmorphic overlay (`Simplifying this for you...`) renders.
-  - Original 21-field form fades out and scales down (`scale: 0.94`, `duration: 350ms`, within 300–400ms spec).
-  - Wizard fades in and slides into view via calibrated spring physics (`stiffness: 280`, `damping: 24`).
-  - Shared layout transition via `layoutId="auragen-form-card"` across `AnimatePresence mode="wait"`.
-- **Direction-Aware Step Navigation:**
-  - **Forward (Next):** Enters from right (`+36px`), exits to left (`-36px`).
-  - **Backward (Back):** Enters from left (`-36px`), exits to right (`+36px`).
-  - Animated stepper numbers, badges, and progress bar width transitions.
-- **Prefers-Reduced-Motion Accessibility:**
-  - Leverages `useReducedMotion()`.
-  - When active, all spatial offsets (`x`, `y`, `scale`) are zeroed out, falling back to gentle opacity fades.
+```
+[Raw User Micro-Interactions] 
+           │
+           ▼
+┌────────────────────────────────────────┐
+│  Module 1: frontend/telemetry          │ ──> 10s Rolling Window, Variance, Hesitation, Rage Clicks,
+│  (useTelemetry hook & Simulator)       │     Asymmetric Exponential Smoothing, Threshold (>= 70)
+└────────────────────────────────────────┘
+           │
+           ▼ (Threshold Cross Event)
+┌────────────────────────────────────────┐
+│  Module 2: frontend/animation          │ ──> 1.2s Glassmorphic Announcement ("Simplifying for you...")
+│  (Framer Motion Variants & Morphing)   │     350ms Scale/Fade Form Exit, Spring Entrance of Wizard
+└────────────────────────────────────────┘
+           │
+           ▼ (Rendering or Error Condition)
+┌────────────────────────────────────────┐
+│  Module 3: frontend/fallback           │ ──> Shimmer Skeleton, Privacy-Safe ErrorBoundary,
+│  (Timeout, Fallbacks, Revert Engine)   │     4s Timeout, Pavilson's Prebuilt Templates, 100% Value Revert
+└────────────────────────────────────────┘
+           │
+           ▼
+┌────────────────────────────────────────┐
+│  Module 4: Polish & Accessibility      │ ──> WCAG 2.1 AA, ARIA Live Announcements, Focus Management,
+│  (TelemetryDebugPanel & Accessible UI) │     Collapsible Diagnostic HUD, Responsive Grid
+└────────────────────────────────────────┘
+```
 
 ---
 
-## Module 3: frontend/fallback
+## 2. Module 1: frontend/telemetry – Psychomotor Telemetry & Cognitive Load Engine
 
-### Resilient Recovery Layer
-Located in [frontend/src/fallback/](file:///c:/Users/Admin/OneDrive/Desktop/Project-1-AuraGen/frontend/src/fallback/).
+### 2.1 Source Implementation
+- Hook: [frontend/src/hooks/useTelemetry.js](file:///c:/Users/Admin/OneDrive/Desktop/Project-1-AuraGen/frontend/src/hooks/useTelemetry.js)
+- Simulator & Analytics: [frontend/src/utils/telemetrySimulator.js](file:///c:/Users/Admin/OneDrive/Desktop/Project-1-AuraGen/frontend/src/utils/telemetrySimulator.js)
+- HUD Component: [frontend/src/components/TelemetryHUD.jsx](file:///c:/Users/Admin/OneDrive/Desktop/Project-1-AuraGen/frontend/src/components/TelemetryHUD.jsx)
 
-1. **Graceful Loading Skeleton (`WizardLoadingSkeleton`):**
-   - Renders while code is generated or validated.
-   - Animated shimmer waves and text: *"Preparing your simplified form..."*.
-2. **React Error Boundary (`ErrorBoundary` & `WizardErrorFallback`):**
-   - Catches unhandled runtime exceptions inside the wizard.
-   - Privacy-first design: stack traces and syntax errors are strictly suppressed from user UI.
-   - Offers dual recovery actions: **"Retry Assistance"** and **"Return to Original Form"**.
-3. **4-Second Generation Timeout & WebSocket Failure Handling:**
-   - Implemented in [GenerationFallbackManager.js](file:///c:/Users/Admin/OneDrive/Desktop/Project-1-AuraGen/frontend/src/fallback/generationFallbackManager.js).
-   - Starts a 4,000 ms countdown upon generation trigger.
-   - If no valid `{ type: "component" }` arrives in 4s, or if `{ type: "validation_failed" }`, `{ type: "error" }`, or WebSocket connection drops, fallback triggers automatically.
-   - Cancels timeout immediately if component arrives in time.
-   - Prevents duplicate triggers via atomic state flags.
-4. **Integration with Pavilson's Pre-built Wizard Templates:**
-   - Pre-built templates in [prebuiltTemplates.js](file:///c:/Users/Admin/OneDrive/Desktop/Project-1-AuraGen/frontend/src/fallback/prebuiltTemplates.js):
-     - `income-stepper`: For `annualIncome` / `monthlyNetIncome`.
-     - `loan-details`: For `loanAmount` / `loanPurpose`.
-     - `quick-review`: Universal 2-step assistant.
-   - If template is available, renders template. If template is unavailable, cleanly restores original form.
-5. **Persistent "Back to Original Form" Revert Workflow:**
-   - Persistent top action bar visible whenever simplified mode is active.
-   - Zero page reload: restores full 21-field form with latest updated values (not initial empty fields).
-   - Transmits `{ type: "revert", sessionId, timestamp, formValues }` over WebSocket to reset in-flight server state.
-   - Animated smoothly with `revertMorphVariant`.
+### 2.2 Mathematical Calibration & Weights
+Cognitive friction is quantified across 5 normalized dimensions with calibrated weights summing to 100 points:
+
+| Dimension | Weight | Mathematical Formulation | Scaling Reference |
+| :--- | :--- | :--- | :--- |
+| **Velocity Variance** | `0.25` (25 pts) | $\sigma_v = \sqrt{\frac{1}{N} \sum (v_i - \bar{v})^2}$ | Normalized against $\sigma = 600\text{ px/s}$ |
+| **Hesitation Duration** | `0.25` (25 pts) | $\max(0, \text{now} - \text{lastInteractionTime})$ on active input | Normalized against $8,000\text{ ms}$ pause |
+| **Direction Changes** | `0.20` (20 pts) | Count of angular deflections $> 45^\circ$ where travel $> 8\text{ px}$ | Normalized against 12 direction reversals |
+| **Rage Clicks** | `0.20` (20 pts) | Count of clusters ($\ge 3$ clicks in $1000\text{ ms}$ within $35\text{ px}$) | Normalized against 3 incidents |
+| **Click Error Rate** | `0.10` (10 pts) | $\frac{\text{misclicks}}{\text{totalClicks}}$ (clicks outside interactive targets or on invalid controls) | Scaled $0.0 - 1.0 \to 0 - 100\%$ |
+
+### 2.3 Dual-Rate Exponential Smoothing
+To balance rapid responsiveness with visual stability, AuraGen applies an asymmetric smoothing filter:
+$$\alpha_{\text{eff}} = \begin{cases} \min(\alpha, 0.45) & \text{if } \text{RawScore} > \text{PrevScore} \quad (\text{Fast Attack}) \\ 0.65 & \text{if } \text{RawScore} \le \text{PrevScore} \quad (\text{Gentle Decay}) \end{cases}$$
+$$\text{Score}_t = \text{round}\left( \text{PrevScore} \cdot \alpha_{\text{eff}} + \text{RawScore} \cdot (1 - \alpha_{\text{eff}}) \right)$$
+
+### 2.4 Gating & Protection Lifecycle
+- **Minimum Activity Gate:** Scoring remains 0 until the user performs at least 2 real interactions or 1 interactive click.
+- **Trigger Threshold:** Default score of `70` activates the adaptation pipeline.
+- **60-Second Cooldown:** Post-trigger, a 60-second cooldown is engaged to prevent duplicate code-gen invocations during user adaptation.
+- **Hysteresis Reset:** The trigger latch resets only when the score drops below $85\%$ of the threshold ($59.5$).
+
+### 2.5 Built-In Telemetry Simulator
+The developer HUD provides two deterministic simulation modes:
+1. **Confused User Simulation:** Simulates micro-pauses, jittery paths, and rage click bursts, driving the score from baseline to $\ge 75$ within 6 seconds.
+2. **Calm User Simulation:** Dispatches smooth cubic bezier cursor paths with normal interaction pacing, maintaining score below $25$.
+3. **CSV Export:** Generates an analytics CSV file recording all 12 rolling telemetry channels for historical analysis.
 
 ---
 
-## Module 4: Frontend Polish & Accessibility
+## 3. Module 2: frontend/animation – Fluid Morphing & Step Navigation
 
-1. **Focus Management:**
-   - Active focus is shifted to the assistant card upon morphing, and restored to the form container upon reverting (`tabIndex={-1}`, `preventScroll: true`).
-2. **ARIA Live Region:**
-   - `role="status"` with `aria-live="polite"` announces state transitions to assistive technologies (screen readers) for form changes, loading, wizard activation, and fallback templates.
+### 3.1 Source Implementation
+- Variants & Configuration: [frontend/src/animation/variants.js](file:///c:/Users/Admin/OneDrive/Desktop/Project-1-AuraGen/frontend/src/animation/variants.js)
+- Transition Component: [frontend/src/animation/AnimatedTransition.js](file:///c:/Users/Admin/OneDrive/Desktop/Project-1-AuraGen/frontend/src/animation/AnimatedTransition.js)
+- Wizard Component: [frontend/src/components/ConversationalWizard.jsx](file:///c:/Users/Admin/OneDrive/Desktop/Project-1-AuraGen/frontend/src/components/ConversationalWizard.jsx)
+- Overlay Component: [frontend/src/components/SimplifyingOverlay.jsx](file:///c:/Users/Admin/OneDrive/Desktop/Project-1-AuraGen/frontend/src/components/SimplifyingOverlay.jsx)
+
+### 3.2 Dynamic Form-to-Wizard Morphing Flow
+When cognitive friction crosses the threshold, the transformation executes sequentially without page reload:
+1. **Glassmorphic Announcement (1.2s):** `<SimplifyingOverlay>` scales up (`scale: 0.95 \to 1.0`) with backdrop blur (`backdrop-blur-md`) announcing *"AuraGen detected interaction difficulty. Simplifying your experience..."*.
+2. **Form Exit Transition:** The 21-field form card gracefully exits using `formMorphVariant`:
+   - `opacity: 1 \to 0`
+   - `scale: 1.0 \to 0.94`
+   - `duration: 0.35s` (calibrated within the 300–400ms specification)
+   - `ease: "easeInOut"`
+3. **Wizard Spring Entrance:** The simplified wizard card mounts using `wizardSpringVariant`:
+   - `type: "spring"`
+   - `stiffness: 280`
+   - `damping: 24`
+   - `mass: 0.8`
+   - Initial translation: `y: 24px \to 0px`
+
+### 3.3 Direction-Aware Horizontal Step Navigation
+Step transitions inside `<ConversationalWizard>` evaluate navigation direction dynamically:
+- **Forward Step (Next):**
+  - Incoming Step: Starts at `x: +36px, opacity: 0`, transitions to `x: 0, opacity: 1`.
+  - Outgoing Step: Exits to `x: -36px, opacity: 0`.
+- **Backward Step (Back):**
+  - Incoming Step: Starts at `x: -36px, opacity: 0`, transitions to `x: 0, opacity: 1`.
+  - Outgoing Step: Exits to `x: +36px, opacity: 0`.
+- **Stepper Progress Bar:** Width interpolates smoothly with a guaranteed minimum duration floor (`0.01s`) to avoid zero-duration keyframe divide-by-zero errors.
+
+### 3.4 Accessibility: Prefers-Reduced-Motion Adapter
+The `getAccessibleVariant` function inspects system accessibility preferences:
+- When `prefers-reduced-motion` is active:
+  - All spatial translations (`x`, `y`, `scale`) are zeroed out.
+  - Motion falls back to gentle opacity cross-fades (`duration: 0.15s`).
+  - Dynamic functional variants (such as `stepSlideVariant.initial(direction)`) are evaluated safely via function reflection, preventing Webpack proxy runtime errors.
+
+---
+
+## 4. Module 3: frontend/fallback – Resilient UI Fallbacks & State Preservation
+
+### 4.1 Source Implementation
+- Fallback Manager: [frontend/src/fallback/generationFallbackManager.js](file:///c:/Users/Admin/OneDrive/Desktop/Project-1-AuraGen/frontend/src/fallback/generationFallbackManager.js)
+- Shimmer Skeleton: [frontend/src/fallback/WizardLoadingSkeleton.js](file:///c:/Users/Admin/OneDrive/Desktop/Project-1-AuraGen/frontend/src/fallback/WizardLoadingSkeleton.js)
+- Error Boundary: [frontend/src/fallback/ErrorBoundary.js](file:///c:/Users/Admin/OneDrive/Desktop/Project-1-AuraGen/frontend/src/fallback/ErrorBoundary.js)
+- Prebuilt Templates: [frontend/src/fallback/prebuiltTemplates.js](file:///c:/Users/Admin/OneDrive/Desktop/Project-1-AuraGen/frontend/src/fallback/prebuiltTemplates.js)
+
+### 4.2 Four-Second Generation Timeout
+AuraGen guarantees the user is never left hanging on a frozen interface:
+1. When cognitive load triggers generation, a strict **4,000 ms countdown timer** begins.
+2. If code generation, AST validation, or WebSocket transport does not deliver a usable component within 4 seconds, `GenerationFallbackManager` activates fallback mode.
+3. If the generated component arrives within 4 seconds, the timer is cleanly cancelled.
+4. Duplicate fallback activations are prevented via atomic execution guards.
+
+### 4.3 Error Handling & Privacy-Safe Recovery
+The `<ErrorBoundary>` component catches unexpected rendering exceptions:
+- **Zero Stack-Trace Exposure:** Internal error traces and code syntax details are suppressed from user-facing screens to preserve security and privacy.
+- **Friendly Recovery Actions:** Users are provided two intuitive options:
+  - **"Retry Assistance":** Re-initiates the simplified wizard.
+  - **"Return to Original Form":** Re-mounts the comprehensive 21-field form.
+
+### 4.4 Pavilson Prebuilt Template Integration
+When the LLM pipeline is unavailable or rejected by the AST security validator, AuraGen dynamically resolves one of Pavilson's pre-built templates based on the friction field:
+- **`income-stepper`:** Rendered when friction occurs in `annualIncome`, `monthlyNetIncome`, or `employmentStatus`.
+- **`loan-details`:** Rendered when friction occurs in `monthlyHousingPayment` or liability balances.
+- **`quick-review`:** Universal 2-step verification wizard used as a fallback for all other fields.
+- If no template matches or templates are disabled, the system cleanly restores the original form.
+
+### 4.5 Persistent "Back to Original Form" & Bidirectional State Preservation
+A persistent banner (`← Back to Original Form`) is available throughout the simplified experience:
+- **100% Value Preservation:** Any changes made by the user in Step 1 or Step 2 of the wizard are merged into the central 21-field state and retained when returning to the full form.
+- **Zero Page Refresh:** State restoration occurs completely in-memory through React state synchronization.
+- **WebSocket Revert Synchronization:** Dispatches `{ type: "revert", sessionId, timestamp, formValues }` to clear in-flight generation requests on the backend.
+
+---
+
+## 5. Module 4: Frontend Polish, Accessibility & Developer Telemetry HUD
+
+### 5.1 Source Implementation
+- Telemetry Debug Panel: [frontend/src/components/TelemetryDebugPanel.jsx](file:///c:/Users/Admin/OneDrive/Desktop/Project-1-AuraGen/frontend/src/components/TelemetryDebugPanel.jsx)
+- Main Application Shell: [frontend/src/app/page.js](file:///c:/Users/Admin/OneDrive/Desktop/Project-1-AuraGen/frontend/src/app/page.js)
+
+### 5.2 Accessibility Architecture (WCAG 2.1 AA)
+1. **ARIA Live Announcements:** An invisible ARIA live region (`role="status"`, `aria-live="polite"`, `aria-atomic="true"`) announces mode transitions to screen readers:
+   - *"Interaction difficulty detected. Simplifying your experience into an assisted wizard."*
+   - *"Assisted wizard loaded. Step 1 of 3: Income and Housing Details."*
+   - *"Restored full application form with your updated information."*
+2. **Programmatic Focus Management:**
+   - Focus is shifted to the assistant card heading upon morphing (`tabIndex={-1}`, `preventScroll: true`).
+   - Focus is restored to the primary form container upon reverting.
 3. **Keyboard Navigation:**
-   - Accessible keyboard support throughout: `Enter` advances steps, `Escape` reverts to original form or closes the debug panel.
-   - Visible focus rings (`focus-visible:ring-2 focus-visible:ring-indigo-500`) on all interactive controls.
-4. **Responsive Layouts:**
-   - Fully optimized across mobile (`320px+`), tablet (`768px+`), and desktop (`1024px+`).
-5. **Telemetry Diagnostic Cockpit (`TelemetryDebugPanel`):**
-   - Non-intrusive collapsible floating panel in bottom-right corner.
-   - Shows real-time score, threshold, UI mode, generation latency (ms), AST cache hit/miss status, and fallback health.
-   - Hidden or minimized by default to ensure standard users are unaffected.
+   - `Enter`: Advances to the next wizard step.
+   - `Escape`: Closes the debug panel or initiates revert.
+   - Fully visible high-contrast focus rings (`focus-visible:ring-2 focus-visible:ring-indigo-500`).
+
+### 5.3 Developer Telemetry Debug HUD
+A collapsible developer diagnostic cockpit is available via the bottom-right HUD pill or shortcut:
+- Real-time Cognitive Load Score with color-coded status badge (`CALM`, `ELEVATED`, `HIGH`).
+- Dynamic Threshold (`70`) and Cooldown countdown (seconds remaining).
+- Active Interface Mode (`standard`, `simplifying`, `wizard`, `fallback`).
+- Rolling Window interaction tallies and channel metrics.
+- WebSocket streaming cadence and connection health.
 
 ---
 
-## Automated Verification & Test Matrix
+## 6. Design System & Theme Tokens
 
-Total test suite: **49 passing unit and integration tests** across the stack:
-- `tests/telemetry.test.mjs`: 11 tests (weights, normalization, smoothing, confusion simulator, CSV export)
-- `tests/animation.test.mjs`: 6 tests (spring parameters, fade, scale, directional slide)
-- `tests/morphAnimation.test.mjs`: 6 tests (morph timing, overlay, bidirectional step slide, reduced motion)
-- `tests/fallback.test.mjs`: 5 tests (loading skeleton, error boundary, retry, privacy check)
-- `tests/fallbackTimeout.test.mjs`: 9 tests (4s timeout, validation failure, connection drop, template fallback)
-- `tests/formRevert.test.mjs`: 4 tests (round-trip form values preservation, multi-switch, revert protocol)
-- `tests/accessibilityAndDebug.test.mjs`: 3 tests (reduced motion variant adapter, ARIA strings, debug panel)
-- `backend/tests/test-ws-server.js`: 5 tests (WebSocket health, telemetry validation, threshold trigger, revert)
-- Production Build: `npm run build` succeeds cleanly with 0 errors.
+AuraGen employs a futuristic, high-contrast dark SaaS aesthetic:
+
+| Token Name | Hex Value | Usage |
+| :--- | :--- | :--- |
+| **Background Primary** | `#080B16` | Main canvas background |
+| **Background Secondary** | `#0D1220` | Section backgrounds & navigation |
+| **Card Surface** | `#11172A` | Form cards, wizard containers |
+| **Elevated Surface** | `#171E33` | Modals, floating drawers, tooltips |
+| **Primary Violet** | `#8057FF` | Primary CTA buttons, focus outlines |
+| **Lavender Accent** | `#B69CFF` | Secondary highlights, stepper active states |
+| **Cyan Glow** | `#25D9E8` | Telemetry live pulse, active indicators |
+| **Success Emerald** | `#38D9A9` | Validation pass badges, connected indicator |
+| **Error Coral** | `#FF647C` | Validation errors, threshold spike indicator |
+| **Main Text** | `#F4F3FF` | Primary headings and body typography |
+| **Muted Text** | `#9BA6BD` | Field descriptions, subtitles, inactive steps |
+
+---
+
+## 7. Automated Test Matrix & Verification Coverage
+
+The frontend verification suite comprises **44 passing tests across 7 test suites** (plus 5 backend tests, totaling 49 tests):
+
+| Test Suite File | Test Count | Key Invariants Verified |
+| :--- | :--- | :--- |
+| `tests/telemetry.test.mjs` | **12** | Calibrated weights sum to 100, metric normalization bounds $[0, 100]$, score clamping, confused vs calm simulator distinction ($\Delta \ge 50\text{ pts}$), minimum activity gate, 60s cooldown suppression, WebSocket payload schema validation, numerical smoothing stability with `NaN`/Infinity. |
+| `tests/animation.test.mjs` | **6** | Spring transition physics, fade in/out variants, scale down variant (`scale: 0.94`), directional slide offsets ($+36\text{px} / -36\text{px}$), form morph and overlay variants, AnimatePresence wrapper re-exports. |
+| `tests/morphAnimation.test.mjs` | **6** | 350ms form exit duration (within 300–400ms spec), wizard spring slide entrance, overlay animation parameters, direction-aware step navigation, `prefers-reduced-motion` translation suppression, input preservation across steps. |
+| `tests/fallback.test.mjs` | **5** | Shimmer loading skeleton wave rendering, ErrorBoundary exception catching, suppression of internal error stack traces, retry action verification, template fallback resolution. |
+| `tests/fallbackTimeout.test.mjs` | **9** | 4,000ms generation timeout constant, prebuilt template resolution, timeout fallback trigger, timer cancellation upon successful generation, `validation_failed` handling, connection drop fallback, clean timer disposal. |
+| `tests/formRevert.test.mjs` | **4** | Full round-trip preservation of all 21 form fields upon revert, multiple back-and-forth switches without value regression, `revertMorphVariant` spring parameters, `{ type: "revert" }` protocol dispatch. |
+| `tests/accessibilityAndDebug.test.mjs` | **3** | `prefers-reduced-motion` variant transformation, ARIA transition announcement string generation, `TelemetryDebugPanel` semantic rendering and prop propagation. |
+| **Backend Integration Suite** | **5** | HTTP `/health` 200 OK, WebSocket handshake, schema validation, low-score logging, threshold breach code generation. |
+| **Total Automated Tests** | **49** | **100% Passing Status** |
+
+---
+
+## 8. Cross-Module Interface Contracts
+
+### 8.1 WebSocket Message Formats
+- **Telemetry Stream (`telemetry`):**
+  ```json
+  {
+    "type": "telemetry",
+    "sessionId": "sess_123456",
+    "timestamp": 1700000000000,
+    "metrics": {
+      "mouseVelocity": 380,
+      "hesitationMs": 4200,
+      "rageClicks": 2,
+      "clickErrorRate": 0.2
+    },
+    "cognitiveLoadScore": 74,
+    "activeField": "annualIncome"
+  }
+  ```
+- **Revert Synchronization (`revert`):**
+  ```json
+  {
+    "type": "revert",
+    "sessionId": "sess_123456",
+    "timestamp": 1700000000000,
+    "formValues": {
+      "annualIncome": "185000",
+      "employmentStatus": "Employed"
+    }
+  }
+  ```

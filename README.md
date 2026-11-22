@@ -1,182 +1,301 @@
-# AuraGen – Self-Healing Generative UI via Cognitive Load
+# AuraGen – AI-Powered Self-Healing Generative UI
 
-> **Infotact Solutions – Advanced Generative AI Engineering (Week 1 Full-Stack Monorepo)**  
-> Real-time behavioral telemetry streaming over WebSockets + Complex Financial Form Demo + Stubbed Code-Gen Integration.
-
----
-
-## 🌟 Overview
-
-Standard enterprise forms are rigid. When a user struggles on a complex financial disclosure form, AuraGen tracks behavioral friction signals (mouse velocity, hesitation time, rage clicks, click-error rate) to calculate a real-time **Cognitive Load Score (0–100)**. When the score crosses the configured threshold (`>= 70`), the Node.js WebSocket server invokes `generateComponent()` and pushes a custom, simplified React wizard component (`{ type: "component", code }`) back to the browser.
-
-### Week 1 Scope
-- **Backend (`/backend`)**: Node.js WebSocket server (`ws`) that validates and logs incoming telemetry in the shared JSON format, evaluates the cognitive load threshold, calls `generateComponent()` (with a placeholder stub ready to swap in teammate's LangChain pipeline), and responds with `{ type: "component", code }`.
-- **Frontend (`/frontend`)**: Next.js (App Router) + Tailwind CSS app featuring:
-  - Resilient WebSocket client service & `useWebSocket` React hook (auto-reconnect with exponential backoff, connection status, `sendTelemetry`, `onMessage`).
-  - Behavioral `useTelemetry` hook tracking mouse velocity, field hesitation, rage clicks, and click errors.
-  - Complex 21-field, 5-section financial application (`Personal`, `Employment`, `Income`, `Assets`, `Liabilities`) with full client-side validation.
-  - Live Telemetry HUD & Week 1 Code Inspector Drawer.
-
-### Weeks 2, 3 & 4 Frontend Milestones (Raksha R. - Frontend Lead)
-- **Calibrated Behavioral Telemetry (`frontend/telemetry`)**: 10-second rolling window, multi-metric normalized weighting (variance: 0.25, direction reversals: 0.20, hesitation: 0.25, rage clicks: 0.20, click errors: 0.10), exponential smoothing, minimum interaction gate, 60s cooldown, dev confusion & calm simulator, and CSV time-series report.
-- **Dynamic Morphing & Step Navigation (`frontend/animation`)**: Framer Motion fluid form-to-wizard morphing (350ms form exit, spring entrance), directional step slide transitions, shared `layoutId` transitions, and full `prefers-reduced-motion` accessibility.
-- **Graceful Fallback UI (`frontend/fallback`)**: Shimmer loading skeleton, resilient ErrorBoundary with privacy-safe recovery UI, 4-second generation timeout, integration with Pavilson's pre-built wizard templates (`income-stepper`, `loan-details`, `quick-review`), and clean restoration to the original form if templates are unavailable.
-- **Persistent Animated Revert (`frontend/form`)**: Persistent "Back to Original Form" bar with 100% bidirectional form value preservation (restoring latest user updates), zero page reload, and WebSocket `{ type: "revert" }` protocol synchronization.
-- **Frontend Polish & Diagnostics**: Active focus management, ARIA live region transition announcements, keyboard navigation (`Escape`, `Enter`), responsive layouts (mobile/tablet/desktop), and collapsible dev Telemetry Debug Panel.
-
-*(For detailed architectural breakdown, see [docs/FRONTEND_MODULES.md](docs/FRONTEND_MODULES.md).)*
+> **Infotact Solutions – Advanced Generative AI Engineering**  
+> *Interfaces That Understand You.*  
+> Real-time behavioral psychomotor telemetry, calibrated cognitive friction detection, fluid Framer Motion morphing, and zero-data-loss adaptive Generative UI over WebSockets.
 
 ---
 
-## 📁 Monorepo Folder Structure
+## 🌟 Executive Summary
+
+Enterprise forms are notoriously rigid. When a user experiences cognitive overload on complex financial, medical, or administrative applications, traditional interfaces provide static error labels or suffer high abandonment rates.
+
+**AuraGen** dynamically detects implicit behavioral friction in real time by monitoring cursor velocity variance, directional path reversals, hesitation pauses, and rage-click clusters. When a calculated **Cognitive Load Score (0–100)** crosses a calibrated threshold (`>= 70`), AuraGen initiates a fluid, zero-page-refresh UI transformation:
+1. Announces the adaptation with a non-jarring glassmorphic overlay (*"AuraGen detected interaction difficulty. Simplifying your experience..."*).
+2. Fades and scales down the intimidating multi-section form (`350ms`).
+3. Seamlessly morphs into an AI-generated 3-step **Conversational Wizard** via spring physics.
+4. Preserves 100% of user-entered data bidirectionally.
+5. Provides a persistent **"Back to Original Form"** recovery action, resilient error boundaries, and a 4-second generation timeout fallback.
+
+---
+
+## 🏗️ System Architecture
 
 ```
-AuraGen (Infotact Solutions)/
-├── .env.example                           # Monorepo environment reference
-├── .gitignore                             # Git ignore rules
-├── package.json                           # Root convenience scripts (run both servers together)
-├── README.md                              # Project documentation & run guide
+┌────────────────────────────────────────────────────────────────────────┐
+│                              FRONTEND                                  │
+│                                                                        │
+│  [21-Field Financial Form]                                             │
+│            │                                                           │
+│            ▼                                                           │
+│  [useTelemetry Hook] ──(10s Rolling Window)──> [Cognitive Load Score]   │
+│            │                                            │              │
+│            │ (1s WebSocket Stream)                      ▼ (Score >= 70)│
+│            │                                 [1.2s Morph Transition]   │
+│            │                                            │              │
+│            │                                            ▼              │
+│            │                                 [Conversational Wizard]   │
+│            │                                            ▲              │
+│            │                                            │ (Fallback)   │
+│            │                                 [Prebuilt Templates]      │
+│            │                                 (Pavilson / 4s Timeout)   │
+└────────────┼────────────────────────────────────────────┼──────────────┘
+             │                                            │
+   ws://...  │ telemetry { metrics, score, activeField }  │ { type: "component", code }
+             ▼                                            │
+┌─────────────────────────────────────────────────────────┼──────────────┐
+│                              BACKEND                    │              │
+│                                                         │              │
+│  [WebSocket Server (ws)] ──> [Telemetry Validator]      │              │
+│                                     │                   │              │
+│                                     ▼ (Score >= 70)     │              │
+│                             [CodeGen Service] ──────────┘              │
+│                             (GPT-4o Pipeline / Stub)                   │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 📦 Monorepo Directory Layout
+
+```
+Project-1-AuraGen/
+├── .env.example                               # Monorepo environment variable template
+├── .gitignore                                 # Git ignore directives
+├── package.json                               # Monorepo runner scripts
+├── README.md                                  # Primary project reference manual
+├── docs/                                      # Specialized technical documentation
+│   ├── DEVELOPER_WORKFLOW.md                  # Team Git conventions, branches & PR checklist
+│   ├── FRONTEND_MODULES.md                    # Deep dive into Weeks 2-4 frontend modules
+│   ├── TELEMETRY_SPECIFICATION.md             # Cognitive Load Score math & sensor architecture
+│   └── TROUBLESHOOTING.md                     # Port conflicts, Webpack cache & connection guide
 ├── scripts/
-│   └── dev.mjs                            # Zero-dependency runner launching backend + frontend together
-├── backend/
-│   ├── .env                               # Local backend environment variables
-│   ├── .env.example                       # Backend environment template
-│   ├── package.json                       # Backend dependencies (ws, dotenv)
+│   └── dev.mjs                                # Zero-dependency dual-process dev launcher
+├── backend/                                   # WebSocket Server & Telemetry Engine
+│   ├── .env.example                           # Backend environment template
+│   ├── package.json                           # Dependencies (ws, dotenv)
 │   ├── src/
+│   │   ├── server.js                          # HTTP /health & WebSocket server
 │   │   ├── config/
-│   │   │   └── constants.js               # WS_PORT, threshold, cooldown, default form schema
+│   │   │   └── constants.js                   # Ports, default thresholds, form schema
 │   │   ├── services/
-│   │   │   ├── codeGenService.js          # Teammate module adapter (falls back to stub)
-│   │   │   └── codeGenStub.js             # Week 1 placeholder React wizard generator
-│   │   ├── validators/
-│   │   │   └── telemetryValidator.js      # Strict shared JSON format validator
-│   │   └── server.js                      # HTTP /health + WebSocket server
+│   │   │   ├── codeGenService.js              # Pipeline adapter (falls back to stub)
+│   │   │   └── codeGenStub.js                 # High-performance local wizard generator
+│   │   └── validators/
+│   │       └── telemetryValidator.js          # Strict telemetry JSON validator
 │   └── tests/
-│       └── test-ws-server.js              # Automated WebSocket integration test suite
-└── frontend/
-    ├── .env.local                         # Local frontend environment variables
-    ├── .env.local.example                 # Frontend environment template
-    ├── next.config.mjs                    # Next.js configuration
-    ├── package.json                       # Next.js, React, Tailwind CSS dependencies
-    ├── postcss.config.mjs                 # PostCSS configuration
-    ├── tailwind.config.js                 # Tailwind CSS configuration
-    └── src/
-        ├── app/
-        │   ├── globals.css                # Tailwind directives
-        │   ├── layout.js                  # Root app layout
-        │   └── page.js                    # Financial Form Demo + Telemetry HUD + Code Drawer
-        ├── components/
-        │   ├── FinancialForm.jsx          # 21-field, 5-section complex financial form + validation
-        │   ├── GeneratedCodeDrawer.jsx    # Inspector modal for received `{ type: "component", code }`
-        │   └── TelemetryHUD.jsx           # Live WS status, score bar, metrics, friction simulator
-        ├── data/
-        │   └── financialFormSchema.js     # Field schema & per-field/full-form validation logic
-        ├── hooks/
-        │   ├── useTelemetry.js            # Mouse velocity, hesitation, rage clicks & score hook
-        │   └── useWebSocket.js            # Auto-reconnecting WS hook (`sendTelemetry`, `onMessage`)
-        └── services/
-            └── wsService.js               # Underlying WebSocket client with exponential backoff
+│       └── test-ws-server.js                  # Automated WebSocket test suite (5 tests)
+└── frontend/                                  # Next.js 15.5 SaaS Application
+    ├── .env.local.example                     # Frontend environment template
+    ├── next.config.mjs                        # Next.js configuration
+    ├── package.json                           # Next.js, React 19, Framer Motion, Tailwind
+    ├── tailwind.config.js                     # Futuristic Dark Palette configuration
+    ├── src/
+    │   ├── animation/
+    │   │   ├── AnimatedTransition.js          # Motion re-exports & wrapper
+    │   │   └── variants.js                    # Spring, morph, slide & accessibility variants
+    │   ├── app/
+    │   │   ├── globals.css                    # Tailwind directives & scrollbar styles
+    │   │   ├── layout.js                      # Root app layout
+    │   │   └── page.js                        # Main SaaS page shell & mode coordinator
+    │   ├── components/
+    │   │   ├── ConversationalWizard.jsx       # 3-step simplified AI assistant
+    │   │   ├── FinancialForm.jsx              # 21-field 5-section complex disclosure form
+    │   │   ├── SimplifyingOverlay.jsx         # 1.2s glassmorphic transformation announcement
+    │   │   ├── TelemetryAnalyticsChart.jsx    # Real-time score trend line chart
+    │   │   ├── TelemetryDebugPanel.jsx        # Developer diagnostic cockpit
+    │   │   └── TelemetryHUD.jsx               # Top navigation, live score ring & simulator
+    │   ├── data/
+    │   │   └── financialFormSchema.js         # 21-field definitions & validation rules
+    │   ├── fallback/
+    │   │   ├── ErrorBoundary.js               # Privacy-safe React error boundary
+    │   │   ├── generationFallbackManager.js   # 4-second timeout & template router
+    │   │   ├── prebuiltTemplates.js           # Pavilson's 3 prebuilt wizard templates
+    │   │   └── WizardLoadingSkeleton.js       # Shimmer loading skeleton
+    │   ├── hooks/
+    │   │   ├── useTelemetry.js                # Calibrated psychomotor friction sensor hook
+    │   │   └── useWebSocket.js                # Auto-reconnecting WebSocket client hook
+    │   ├── services/
+    │   │   └── wsService.js                   # WebSocket transport with exponential backoff
+    │   └── utils/
+    │       └── telemetrySimulator.js          # Confused/Calm simulation & CSV exporter
+    └── tests/                                 # Frontend test suites (44 tests across 7 files)
+        ├── accessibilityAndDebug.test.mjs
+        ├── animation.test.mjs
+        ├── fallback.test.mjs
+        ├── fallbackTimeout.test.mjs
+        ├── formRevert.test.mjs
+        ├── morphAnimation.test.mjs
+        └── telemetry.test.mjs
 ```
 
 ---
 
-## 🔌 Shared WebSocket Protocol
+## ⚡ Quick Start & Run Guide
 
-### Client → Server (`telemetry`)
-```json
-{
-  "type": "telemetry",
-  "sessionId": "sess_a1b2c3d4",
-  "timestamp": 1700000000000,
-  "metrics": {
-    "mouseVelocity": 420,
-    "hesitationMs": 9500,
-    "rageClicks": 4,
-    "clickErrorRate": 0.35
-  },
-  "cognitiveLoadScore": 84,
-  "activeField": "annualIncome"
-}
+### 1. Prerequisites
+- **Node.js**: `v18.17.0` or higher (`v20.x` recommended).
+- **Package Manager**: `npm` (included with Node.js).
+- **Ports**: Port `3000` (Next.js) and Port `8080` (WebSocket server) must be free.
+
+### 2. Environment Setup
+Clone the repository and copy the environment templates:
+```bash
+git clone https://github.com/mdyusuf06/Project-1-AuraGen.git
+cd Project-1-AuraGen
+
+# Copy environment templates if not already present
+cp .env.example .env
+cp backend/.env.example backend/.env
+cp frontend/.env.local.example frontend/.env.local
 ```
 
-### Server → Client (`component`)
-When `cognitiveLoadScore >= COGNITIVE_LOAD_THRESHOLD` (default `70`):
-```json
-{
-  "type": "component",
-  "code": "import React, { useState } from \"react\";\nexport default function DynamicFormWizard(...) { ... }"
-}
-```
-
----
-
-## 🚀 Setup & Running Frontend + Backend Together
-
-### 1. Install All Dependencies
-From the monorepo root:
+### 3. Install Dependencies
+Install dependencies for all workspaces with a single command from root:
 ```bash
 npm run install:all
 ```
-*(Or manually run `npm install` inside both `backend/` and `frontend/`.)*
 
-### 2. Verify Environment Files
-Default local config files are included:
-- `backend/.env` (`WS_PORT=8080`, `COGNITIVE_LOAD_THRESHOLD=70`)
-- `frontend/.env.local` (`NEXT_PUBLIC_WS_URL=ws://localhost:8080`, `NEXT_PUBLIC_COGNITIVE_LOAD_THRESHOLD=70`)
+### 4. Launch AuraGen
 
-*(See `.env.example`, `backend/.env.example`, and `frontend/.env.local.example` for reference.)*
-
-### 3. Run Frontend & Backend Together
-
-#### Option A: Single Command from Root (Recommended)
+#### Option A: Unified Launcher (Recommended)
+From the project root:
 ```bash
 npm run dev
 ```
-This launches:
-- **Backend WebSocket Server**: `ws://localhost:8080` (health check: `http://localhost:8080/health`)
-- **Frontend Next.js App**: `http://localhost:3000`
+This concurrently boots:
+- **Backend WebSocket Server:** `ws://localhost:8080` (Health check: `http://localhost:8080/health`)
+- **Frontend Next.js SaaS:** `http://localhost:3000`
 
-#### Option B: Two Separate Terminals
-**Terminal 1 (Backend):**
-```bash
-cd backend
-npm run dev
-```
-
-**Terminal 2 (Frontend):**
-```bash
-cd frontend
-npm run dev
-```
+#### Option B: Dedicated Terminals (Ideal for Demos & Debugging)
+- **Terminal 1 (Backend):**
+  ```bash
+  cd backend
+  npm run dev
+  ```
+- **Terminal 2 (Frontend):**
+  ```bash
+  cd frontend
+  npm run dev
+  ```
 
 ---
 
-## 🧪 Verification & Testing
+## 🌐 Environment Variables Matrix
 
-### Automated Backend WebSocket Tests
-```bash
-npm run test:backend
-```
-Tests `/health`, WebSocket handshake, invalid telemetry error handling, low-score logging, and high-score `{ type: "component", code }` generation.
-
-### Frontend Production Build Check
-```bash
-npm run build:frontend
-```
-
-### Interactive Demo Walkthrough
-1. Open `http://localhost:3000` in your browser.
-2. Observe the **TelemetryHUD** banner at the top showing `WS Connected` and live velocity/hesitation metrics streaming to the backend terminal.
-3. Interact with the 21-field **Commercial Credit & Wealth Disclosure** form (test validation by clicking **Validate and Submit Application** or clicking **Prefill Partial Data**).
-4. Click **Simulate Friction Spike** (or rapidly click 3+ times in one spot / wait idle on a field) to push `cognitiveLoadScore >= 70`.
-5. Watch the backend console log the threshold breach and immediately push `{ type: "component", code }` back to the frontend, opening the **Generated Component Preview** drawer.
+| Variable | Location | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `WS_PORT` | `backend/.env` | `8080` | Port for WebSocket server and `/health` endpoint |
+| `COGNITIVE_LOAD_THRESHOLD` | `backend/.env` | `70` | Cognitive Load Score threshold triggering code-gen |
+| `GENERATION_COOLDOWN_MS` | `backend/.env` | `3000` | Minimum interval between code generation runs |
+| `USE_TEAMMATE_CODEGEN` | `backend/.env` | `false` | When `true`, delegates to LangChain pipeline |
+| `NEXT_PUBLIC_WS_URL` | `frontend/.env.local` | `ws://localhost:8080` | Target WebSocket server URL |
+| `NEXT_PUBLIC_COGNITIVE_LOAD_THRESHOLD` | `frontend/.env.local` | `70` | Client-side score trigger threshold |
 
 ---
 
-## 🔗 Integrating Teammate's LangChain Module
+## 🧠 Behavioral Telemetry & Scoring Details
 
-When the AI/Backend teammate's `generateComponent()` LangChain module is ready:
-1. Place or link their module at `backend/src/codegen/agent.js` (exporting `generateComponent({ activeField, formFields, userInput, score })`).
-2. Set `USE_TEAMMATE_CODEGEN=true` and add `OPENAI_API_KEY=...` in `backend/.env`.
-3. `backend/src/services/codeGenService.js` will automatically delegate to their LangChain pipeline instead of the Week 1 stub.
+AuraGen samples mouse and keyboard dynamics over a **10-second rolling window** with memory-bounded buffers:
 
+$$\text{Cognitive Load Score} = \sum_{i=1}^5 w_i \cdot \text{NormalizedMetric}_i \in [0, 100]$$
+
+| Metric Channel | Weight | Formulation & Normalization Range |
+| :--- | :--- | :--- |
+| **Velocity Variance** | `0.25` (25 pts) | Standard deviation of cursor velocity normalized against $600\text{ px/s}$. |
+| **Hesitation Duration** | `0.25` (25 pts) | Continuous idle dwell on active field normalized against $8,000\text{ ms}$. |
+| **Direction Changes** | `0.20` (20 pts) | Angular deflections $> 45^\circ$ where travel $> 8\text{ px}$ normalized against 12 reversals. |
+| **Rage Clicks** | `0.20` (20 pts) | Clusters of $\ge 3$ clicks within $1000\text{ ms}$ and $35\text{ px}$ normalized against 3 clusters. |
+| **Click Error Rate** | `0.10` (10 pts) | Misclicks outside interactive elements or on invalid fields scaled $0 - 100\%$. |
+
+### Dynamic Exponential Smoothing
+Raw scores are passed through an asymmetric smoothing filter:
+- **Fast Attack ($\alpha \le 0.45$):** Rapidly tracks rising frustration within 1–2 ticks.
+- **Gentle Decay ($\alpha = 0.65$):** Prevents UI flickering during intermittent calm movements.
+
+*(For the complete mathematical specification, see [docs/TELEMETRY_SPECIFICATION.md](docs/TELEMETRY_SPECIFICATION.md).)*
+
+---
+
+## 🎨 Interactive Browser Walkthrough
+
+1. Open [http://localhost:3000](http://localhost:3000) in Chrome, Edge, or Firefox.
+2. Verify the top header displays **`WS Connected`** with a pulsing green indicator.
+3. Fill in preliminary fields on the **Commercial Credit Disclosure** form:
+   - *Legal Full Name:* `Jane Doe`
+   - *Annual Income:* `$185,000`
+4. In the Telemetry HUD, test the adaptation engine:
+   - **Instant:** Click **`⚡ 1-Click Spike`**.
+   - **Realistic:** Click **`Simulate Confused User`** to observe micro-hesitations and rage clicks driving the score across the threshold (`>= 70`).
+5. Experience the fluid transition:
+   - The 1.2-second glassmorphic announcement appears.
+   - The 21-field form card smoothly scales down and exits.
+   - The 3-step **Conversational Wizard** slides into place with spring physics.
+6. Step through the wizard (pre-populated with your `$185,000` entry) and edit values.
+7. Click **`← Back to Original Form`**:
+   - Re-mounts the original form without a page reload.
+   - All updated values are 100% preserved.
+8. Open the **Telemetry Debug HUD** (bottom-right button or `Ctrl+Shift+D`) to inspect raw telemetry, cooldown status, and WebSocket logs.
+
+---
+
+## 🧪 Comprehensive Automated Test Matrix
+
+AuraGen maintains **49 passing tests** across frontend and backend:
+
+```bash
+# Run all frontend test suites (44 tests)
+npm --prefix frontend test
+
+# Run backend WebSocket integration suite (5 tests)
+npm --prefix backend test
+
+# Run Next.js production build verification
+npm --prefix frontend run build
+```
+
+| Suite | Tests | Description |
+| :--- | :--- | :--- |
+| `frontend/tests/telemetry.test.mjs` | 12 | Weights, metric normalization, score clamping, simulator profiles, minimum activity gate, 60s cooldown, WebSocket schema compliance, numerical stability. |
+| `frontend/tests/animation.test.mjs` | 6 | Spring physics parameters, fade variants, scale down variant (`scale: 0.94`), directional slide offsets ($+36\text{px} / -36\text{px}$). |
+| `frontend/tests/morphAnimation.test.mjs` | 6 | Calibrated 350ms form exit duration, wizard spring entrance, direction-aware step navigation, `prefers-reduced-motion` spatial translation suppression. |
+| `frontend/tests/fallback.test.mjs` | 5 | Shimmer loading skeleton wave rendering, privacy-safe ErrorBoundary exception catching, user recovery actions. |
+| `frontend/tests/fallbackTimeout.test.mjs` | 9 | 4-second generation timeout, prebuilt template resolution, timeout cancellation, `validation_failed` handling, connection drop fallback. |
+| `frontend/tests/formRevert.test.mjs` | 4 | Full 21-field round-trip state preservation, multi-switch stability, `{ type: "revert" }` protocol dispatch. |
+| `frontend/tests/accessibilityAndDebug.test.mjs` | 3 | Reduced motion accessibility adaptations, ARIA live announcements, TelemetryDebugPanel rendering. |
+| `backend/tests/test-ws-server.js` | 5 | HTTP `/health` check, WebSocket handshake, schema validation, low-score logging, threshold breach code generation. |
+
+---
+
+## 🛠️ Troubleshooting & Support
+
+If you encounter port conflicts, WebSocket dropouts, or Next.js cache anomalies:
+
+```powershell
+# Terminate lingering processes on port 3000 or 8080 (Windows PowerShell)
+Get-NetTCPConnection -LocalPort 3000, 8080 -ErrorAction SilentlyContinue | Select-Object OwningProcess, LocalPort
+Stop-Process -Id <PID> -Force
+
+# Clear Next.js build cache
+Remove-Item -Recurse -Force frontend\.next -ErrorAction SilentlyContinue
+```
+
+*(For in-depth troubleshooting scenarios, see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).)*
+
+---
+
+## 👥 Team & Ownership Matrix
+
+| Member | Primary Modules | Focus Areas |
+| :--- | :--- | :--- |
+| **Raksha R.** | `frontend/telemetry`<br>`frontend/animation`<br>`frontend/fallback`<br>`frontend/polish` | Telemetry calibration, cognitive score math, Framer Motion morphing, error boundary, 4s timeout, prebuilt templates, bidirectional revert, WCAG accessibility, Telemetry Debug HUD. |
+| **Yusuf** | `backend/server`<br>`frontend/renderer`<br>`frontend/form` | WebSocket server transport, dynamic code evaluation sandbox (`new Function` scope), form serialization, message protocol dispatch, final integration. |
+| **Jeevan** | `backend/pipeline` | LangChain GPT-4o code-generation pipeline, prompt engineering, token streaming, retry loop. |
+| **Pavilson** | `backend/validator` | Babel AST security validator, banned call detection (`eval`, `fetch`, `window`), pre-built fallback wizard templates. |
+
+---
+
+## 📄 License & Attribution
+
+Developed under the **Infotact Solutions Advanced Generative AI Engineering Program**.  
+Built with Next.js 15.5, React 19, Framer Motion, Tailwind CSS, and Node.js.
