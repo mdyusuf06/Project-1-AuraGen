@@ -160,3 +160,5 @@ export function validateComponentAst(code) {
   return code;
 }
 
+export { validateComponentAst as validate };
+

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { WebSocket } from "ws";
 import { createAuraGenServer } from "../src/server.js";
-import { validateComponentAst, ASTSecurityError } from "../src/services/astValidator.js";
+import { validateComponentAst, validate, ASTSecurityError } from "../src/services/astValidator.js";
 
 function runAstValidatorUnitTests() {
   console.log("\n🛡️  Running AST Validator Unit Tests...");
@@ -13,7 +13,7 @@ function runAstValidatorUnitTests() {
       return <div className="p-4"><input value={documentType} onChange={(e) => setDocumentType(e.target.value)} /></div>;
     }
   `;
-  const returned = validateComponentAst(safeCode);
+  const returned = validate(safeCode);
   assert.equal(returned, safeCode, "Safe JSX should pass and return the exact code string");
 
   const unsafePayloads = [
@@ -28,7 +28,7 @@ function runAstValidatorUnitTests() {
 
   for (const { label, code } of unsafePayloads) {
     assert.throws(
-      () => validateComponentAst(code),
+      () => validate(code),
       (err) => err instanceof ASTSecurityError,
       `AST validator must throw ASTSecurityError for ${label}`
     );
@@ -50,7 +50,7 @@ async function runBackendTests() {
     cooldownMs: 500
   });
 
-  const { port } = await server.start();
+  const { port, sessions } = await server.start();
   const wsUrl = `ws://localhost:${port}`;
   const httpBase = `http://localhost:${port}`;
 
@@ -60,6 +60,7 @@ async function runBackendTests() {
     assert.equal(healthRes.status, 200, "Health endpoint should return 200");
     const healthJson = await healthRes.json();
     assert.equal(healthJson.status, "ok");
+    assert.equal(typeof healthJson.activeSessions, "number");
     console.log("✅ Test 1 Passed: HTTP /health endpoint returned 200 OK");
 
     // 2. Connect WebSocket client (register message listener BEFORE awaiting open)
@@ -77,7 +78,8 @@ async function runBackendTests() {
 
     await new Promise((r) => setTimeout(r, 100));
     assert.equal(receivedMessages[0]?.type, "connected");
-    console.log("✅ Test 2 Passed: WebSocket handshake received");
+    assert.ok(sessions.size >= 1, "Connected client must be tracked in sessions Map");
+    console.log("✅ Test 2 Passed: WebSocket handshake received and tracked in sessions Map");
 
     // 3. Test strict Zod invalid telemetry rejection
     ws.send(
@@ -198,12 +200,61 @@ async function runBackendTests() {
     assert.equal(missingRes.status, 404);
     console.log("✅ Test 7 Passed: Unknown session returned 404");
 
+    // 8. Test explicit generate_request protocol -> generation_started & component
+    const genMessages = [];
+    ws.on("message", (raw) => genMessages.push(JSON.parse(raw.toString("utf-8"))));
+
+    ws.send(
+      JSON.stringify({
+        type: "generate_request",
+        sessionId: "explicit_gen_session",
+        activeField: "creditScore",
+        userInput: { fullName: "Sam Vance", creditScore: "740" },
+        score: 82
+      })
+    );
+
+    const startedMsg = await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("Timed out waiting for generation_started")), 3000);
+      const check = () => {
+        const found = genMessages.find((m) => m.type === "generation_started" && m.sessionId === "explicit_gen_session");
+        if (found) {
+          clearTimeout(timeout);
+          resolve(found);
+        } else {
+          setTimeout(check, 30);
+        }
+      };
+      check();
+    });
+
+    assert.equal(startedMsg.type, "generation_started");
+    assert.equal(startedMsg.activeField, "creditScore");
+
+    const explicitComponentMsg = await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("Timed out waiting for explicit component")), 3000);
+      const check = () => {
+        const found = genMessages.find((m) => m.type === "component" && m.sessionId === "explicit_gen_session");
+        if (found) {
+          clearTimeout(timeout);
+          resolve(found);
+        } else {
+          setTimeout(check, 30);
+        }
+      };
+      check();
+    });
+
+    assert.equal(explicitComponentMsg.type, "component");
+    assert.ok(explicitComponentMsg.code.includes("creditScore"));
+    console.log("✅ Test 8 Passed: generate_request emitted generation_started followed by component");
+
     ws.close();
   } finally {
     await server.stop();
   }
 
-  // 8. Test server AST security gate rejects malicious codeGenerator output
+  // 9. Test server AST security gate rejects malicious codeGenerator output (emits validation_failed & error)
   const maliciousServer = createAuraGenServer({
     port: 0,
     threshold: 70,
@@ -251,13 +302,111 @@ async function runBackendTests() {
 
     assert.equal(astErrorMsg.message, "Generated component failed AST security validation");
     assert.equal(malMessages.find((m) => m.type === "component"), undefined, "Unsafe component must never be sent");
-    console.log("✅ Test 8 Passed: WebSocket server blocked unsafe code via AST validator before sending");
+    console.log("✅ Test 9 Passed: WebSocket server blocked unsafe code via AST validator before sending");
+
+    // 10. Test generate_request emitting validation_failed event on malicious code
+    malWs.send(
+      JSON.stringify({
+        type: "generate_request",
+        sessionId: "test_gen_val_failed",
+        activeField: "taxId"
+      })
+    );
+
+    const valFailedMsg = await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("Timed out waiting for validation_failed")), 3000);
+      const check = () => {
+        const found = malMessages.find((m) => m.type === "validation_failed" && m.sessionId === "test_gen_val_failed");
+        if (found) {
+          clearTimeout(timeout);
+          resolve(found);
+        } else {
+          setTimeout(check, 50);
+        }
+      };
+      check();
+    });
+
+    assert.equal(valFailedMsg.type, "validation_failed");
+    assert.equal(valFailedMsg.sessionId, "test_gen_val_failed");
+    assert.ok(valFailedMsg.errors.length > 0);
+    console.log("✅ Test 10 Passed: generate_request with unsafe code emitted strict validation_failed event");
+
     malWs.close();
   } finally {
     await maliciousServer.stop();
   }
 
-  console.log("\n🎉 All Backend AST Security, Zod, Sliding-Window, Snapshot, & Session Store Tests Passed!");
+  // 11. Test pipeline error handling emits strict event type: error
+  const failingPipelineServer = createAuraGenServer({
+    port: 0,
+    codeGenerator: async () => {
+      throw new Error("OpenAI API rate limit exceeded");
+    }
+  });
+  const { port: failPort, sessions: failSessions } = await failingPipelineServer.start();
+  try {
+    const failWs = new WebSocket(`ws://localhost:${failPort}`);
+    const failMessages = [];
+    failWs.on("message", (raw) => failMessages.push(JSON.parse(raw.toString("utf-8"))));
+
+    await new Promise((resolve, reject) => {
+      failWs.on("open", resolve);
+      failWs.on("error", reject);
+    });
+
+    failWs.send(
+      JSON.stringify({
+        type: "generate_request",
+        sessionId: "sess_fail_test",
+        activeField: "loanAmount"
+      })
+    );
+
+    const started = await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("Timed out waiting for generation_started")), 3000);
+      const check = () => {
+        const found = failMessages.find((m) => m.type === "generation_started");
+        if (found) {
+          clearTimeout(timeout);
+          resolve(found);
+        } else {
+          setTimeout(check, 30);
+        }
+      };
+      check();
+    });
+    assert.equal(started.type, "generation_started");
+
+    const errorEvent = await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("Timed out waiting for pipeline error")), 3000);
+      const check = () => {
+        const found = failMessages.find((m) => m.type === "error" && m.sessionId === "sess_fail_test");
+        if (found) {
+          clearTimeout(timeout);
+          resolve(found);
+        } else {
+          setTimeout(check, 30);
+        }
+      };
+      check();
+    });
+
+    assert.equal(errorEvent.type, "error");
+    assert.ok(errorEvent.details.includes("rate limit") || errorEvent.message.includes("rate limit"));
+    console.log("✅ Test 11 Passed: Pipeline exception properly emitted strict error event");
+
+    // 12. Test Session Management JavaScript Map cleanup on disconnect
+    assert.equal(failSessions.size, 1, "Active session should exist before disconnect");
+    failWs.close();
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(failSessions.size, 0, "Session should be removed from JavaScript Map on disconnect");
+    console.log("✅ Test 12 Passed: JavaScript Map tracks active clients and cleans up upon disconnection");
+  } finally {
+    await failingPipelineServer.stop();
+  }
+
+  console.log("\n🎉 All 12 Backend Messaging Protocol, Session Management & AST Security Tests Passed!");
 }
 
 runBackendTests().catch((err) => {
