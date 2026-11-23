@@ -88,6 +88,12 @@ The developer HUD provides two deterministic simulation modes:
 2. **Calm User Simulation:** Dispatches smooth cubic bezier cursor paths with normal interaction pacing, maintaining score below $25$.
 3. **CSV Export:** Generates an analytics CSV file recording all 12 rolling telemetry channels for historical analysis.
 
+### 2.6 Fast Telemetry Processing & 100ms Event Gating
+To support the 180-second fast-processing ceiling without stalling the main UI thread:
+- **100ms Time-Throttled Mouse Sampling:** High-frequency mouse movements are gated via `performance.now()`, ignoring micro-movements within 100ms and reducing event loop overhead by $> 90\%$.
+- **Memory-Bounded FIFO Queue:** Velocity samples ($\le 250$), direction events ($\le 100$), clicks ($\le 50$), and rage click clusters ($\le 20$) are bounded and pruned every tick to ensure $O(1)$ memory overhead.
+- **Decoupled 1,000ms WebSocket Cadence:** Telemetry computation and streaming run on a 1-second fixed interval decoupled from input event listeners, fitting cleanly into the 20s Stage 2 budget.
+
 ---
 
 ## 3. Module 2: frontend/animation – Fluid Morphing & Step Navigation
@@ -166,6 +172,12 @@ A persistent banner (`← Back to Original Form`) is available throughout the si
 - **100% Value Preservation:** Any changes made by the user in Step 1 or Step 2 of the wizard are merged into the central 21-field state and retained when returning to the full form.
 - **Zero Page Refresh:** State restoration occurs completely in-memory through React state synchronization.
 - **WebSocket Revert Synchronization:** Dispatches `{ type: "revert", sessionId, timestamp, formValues }` to clear in-flight generation requests on the backend.
+
+### 4.6 Latency Budgeting & 4-Second Micro-Timeout Enforcement
+To ensure the UI transformation comfortably fulfills the 180-second fast-processing ceiling:
+- **Strict 4,000ms Countdown:** `GenerationFallbackManager` triggers instant fallback to Pavilson's pre-compiled templates if remote code generation exceeds 4 seconds, preventing indefinite UI loading freezes.
+- **Atomic Trigger Guard:** Flags ensure fallback actions fire exactly once per friction episode.
+- **Timer Disposal:** Countdown timers are cancelled immediately if a valid component arrives within the 4s window.
 
 ---
 

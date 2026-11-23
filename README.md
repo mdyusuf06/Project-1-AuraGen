@@ -66,6 +66,7 @@ Project-1-AuraGen/
 ├── README.md                                  # Primary project reference manual
 ├── docs/                                      # Specialized technical documentation
 │   ├── DEVELOPER_WORKFLOW.md                  # Team Git conventions, branches & PR checklist
+│   ├── FAST_PROCESSING_BUDGET.md              # 180-second fast-processing budget & latency guide
 │   ├── FRONTEND_MODULES.md                    # Deep dive into Weeks 2-4 frontend modules
 │   ├── TELEMETRY_SPECIFICATION.md             # Cognitive Load Score math & sensor architecture
 │   └── TROUBLESHOOTING.md                     # Port conflicts, Webpack cache & connection guide
@@ -214,6 +215,33 @@ Raw scores are passed through an asymmetric smoothing filter:
 - **Gentle Decay ($\alpha = 0.65$):** Prevents UI flickering during intermittent calm movements.
 
 *(For the complete mathematical specification, see [docs/TELEMETRY_SPECIFICATION.md](docs/TELEMETRY_SPECIFICATION.md).)*
+
+---
+
+## ⚡ Fast-Processing Workflow & 180-Second Performance Budget
+
+AuraGen enforces a fast-processing mandate: the complete end-to-end user assistance journey is architected to finish within a **maximum ceiling of 180 seconds (3 minutes)**.
+
+> **Planning Notice:** The following figures are proposed engineering targets for latency budgeting, load allocation, and capacity planning. They represent design goals rather than claims of measured cloud benchmarks.
+
+### 180-Second Target Time Budget Breakdown
+| Stage | Description | Target Budget | Primary Operations & Milestones |
+| :---: | :--- | :---: | :--- |
+| **1** | **Input & Request Preparation** | **15 sec** | Initial form mount, schema hydration, WebSocket handshake, first user keystrokes. |
+| **2** | **Telemetry Dynamics Ingestion** | **20 sec** | 100ms mouse throttling, velocity variance, direction reversals, hesitation tracking. |
+| **3** | **Cognitive Load Evaluation** | **15 sec** | Normalization, calibrated weighted scoring, asymmetric smoothing, minimum activity check. |
+| **4** | **AI UI Generation & Morphing** | **90 sec** | 1.2s announcement overlay, 350ms form exit, LLM prompt generation, token streaming, 4s fallback timeout trigger. |
+| **5** | **AST Validation & Rendering** | **25 sec** | Babel AST security parsing, allowlist verification, spring injection, step navigation. |
+| **6** | **State Sync & Recovery Buffer** | **15 sec** | 100% bidirectional 21-field value preservation, error boundary recovery buffer, revert readiness. |
+| **Total** | **End-to-End Processing Budget** | **180 sec** | **Complete user assistance workflow target (3 minutes maximum)** |
+
+### Core Latency Reduction Mechanisms
+1. **100ms Event Throttling & FIFO Pruning:** Mouse tracking is throttled to 100ms using `performance.now()`, and rolling event buffers are capped ($\le 250$ samples) and pruned every 10 seconds.
+2. **Dual-Layer Timeout Architecture:** A micro-timeout of **4,000ms** triggers prebuilt template fallback (`income-stepper`, `loan-details`, `quick-review`) if LLM generation stalls, while the macro-budget of **180s** bounds the complete journey.
+3. **60-Second Cooldown & Hysteresis:** Prevents redundant code generation calls during user adaptation; trigger latch resets only when score drops below 85% ($59.5$).
+4. **Zero-Reload State Synchronization:** Reverting back to the original form is instantaneous and preserves 100% of user data in-memory without network roundtrips.
+
+*(For detailed profiling methodology and bottleneck analysis, see [docs/FAST_PROCESSING_BUDGET.md](docs/FAST_PROCESSING_BUDGET.md).)*
 
 ---
 

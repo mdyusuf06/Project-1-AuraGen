@@ -152,3 +152,23 @@ Running `npm test` prints:
 
 ### Explanation
 This is an informational warning emitted by Node.js when ES module syntax (`import`/`export`) is used inside files ending in `.js` within a package whose `package.json` omits `"type": "module"`. Node.js automatically detects the ES syntax, reparses the module, and executes all tests with 100% fidelity. All 49 test cases pass cleanly.
+
+---
+
+## 8. Slow-Request Diagnosis & Latency Budget Troubleshooting
+
+### Symptom
+The UI transformation feels sluggish, or an end-to-end assistance journey exceeds the 180-second ceiling.
+
+### Diagnostic Steps
+1. **Check Generation Duration:** Open the Developer Telemetry Debug HUD (`Ctrl+Shift+D` or bottom-right button) and check `generationDurationMs`.
+   - If `generationDurationMs > 4,000ms`, confirm whether `GenerationFallbackManager` engaged Pavilson's prebuilt fallback template.
+2. **Inspect Backend WebSocket Logs:** Look for timestamps:
+   - `[Telemetry] ... score=.../70` (Time score crossed threshold)
+   - `[CodeGen] Calling generateComponent()...` (Time code generation started)
+   - `[CodeGen] Sent { type: "component", code }` (Time response left server)
+3. **Verify Main Thread Blocking:**
+   - In Chrome DevTools, open the **Performance** tab and record 5 seconds while triggering friction.
+   - Long tasks ($> 50\text{ms}$) indicate high-frequency mouse event handlers or heavy Babel AST compilation. Ensure 100ms mouse throttling is functioning.
+4. **Network Latency Check:**
+   - For local development, WebSocket ping should be $< 5\text{ms}$. If WebSocket latency $> 50\text{ms}$, inspect local firewall or proxy settings.
