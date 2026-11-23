@@ -77,3 +77,43 @@ Before staging, committing, and pushing changes to `origin raksha-telemetry`:
    ```powershell
    git push origin raksha-telemetry
    ```
+
+---
+
+## 5. Peer Review & Pull Request Guidelines
+
+When merging your branch into team integration branches:
+1. **Never merge directly into `main`:** Always open a Pull Request from `raksha-telemetry` against `main`.
+2. **Assign Reviewers:**
+   - **Yusuf:** For WebSocket protocol or form state integration points.
+   - **Pavilson:** For fallback template conformance or AST validation rules.
+   - **Jeevan:** For code generation prompt contracts.
+3. **Squash Merges:** Prefer squash merging for clean, linear Git history on `main`.
+
+---
+
+## 6. Safe Conflict Resolution & Emergency Revert Protocol
+
+If Git reports merge conflicts or remote divergence:
+- **Do NOT force push (`git push --force`):** It destroys teammates' commit history.
+- **Do NOT use hard resets (`git reset --hard`):** It destroys uncommitted local work.
+- **Rebase or Fetch Merge:**
+  ```powershell
+  git fetch origin
+  git merge origin/main --no-commit
+  ```
+- **Reverting a Problematic Commit Safely:**
+  ```powershell
+  git revert <commit_hash> -m 1
+  git push origin raksha-telemetry
+  ```
+
+---
+
+## 7. Recommended Developer Git Aliases
+
+Add these productivity aliases to your global Git config (`git config --global alias.<name> "<command>"`):
+- `git st`: `status -s` (Compact status)
+- `git lg`: `log --oneline --graph --decorate -10` (Visual branch tree)
+- `git df`: `diff --stat` (Quick diff summary)
+- `git verify`: `!npm --prefix frontend test && npm --prefix backend test` (Run both test suites)

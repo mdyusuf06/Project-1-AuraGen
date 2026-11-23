@@ -163,3 +163,28 @@ Dispatches smooth, controlled cursor movements:
 The simulator includes a `generateTelemetryReportCSV()` generator exporting the full 60-second rolling buffer with columns:
 `timestamp, timeSeconds, score, rawScore, threshold, isTriggered, activeField, velocityVariance, hesitationMs, rageClicks, clickErrorRate, directionChanges, mode`.
 Users can download the audit file via `downloadCSVReport()` directly from the Telemetry HUD.
+
+---
+
+## 8. Mathematical Notation Glossary & Variable Index
+
+| Symbol | Mathematical Definition | Units / Scale | Code Equivalent |
+| :--- | :--- | :--- | :--- |
+| $\bar{v}$ / $\mu_v$ | Mean cursor velocity over rolling window | Pixels / second | `meanVelocity` |
+| $\sigma_v^2$ | Sample variance of instantaneous velocities | $\text{px}^2/\text{s}^2$ | `velocityVariance` |
+| $\sigma_v$ | Standard deviation of cursor velocity | Pixels / second | `stdDev` |
+| $\theta$ | Heading angle computed via $\text{atan2}(\Delta y, \Delta x)$ | Radians ($-\pi \dots \pi$) | `headingAngle` |
+| $\Delta \theta$ | Angular direction deflection between consecutive samples | Radians ($0 \dots \pi$) | `angleDiff` |
+| $t_{\text{hesitate}}$ | Continuous idle dwell on active field without interaction | Milliseconds | `hesitationMs` |
+| $\alpha_{\text{eff}}$ | Asymmetric exponential smoothing parameter | Unitless ($0.45 - 0.65$) | `effAlpha` |
+| $S_t$ | Calibrated Cognitive Load Score at time $t$ | Range $[0, 100]$ | `cognitiveLoadScore` |
+| $T$ | Adaptation trigger threshold | Default: $70$ | `threshold` |
+
+---
+
+## 9. Touch & Mobile Gestural Telemetry Considerations
+
+On touchscreen devices:
+1. **Touchmove Emulation:** Pointer and touch events generate continuous trajectory streams similar to mousemove.
+2. **Hesitation Dwell:** Focus events on mobile keyboards (`focus`, `blur`) track touch hesitation without requiring pointer motion.
+3. **Double-Tap / Multi-Tap Clustering:** Rapid taps on disabled buttons or static labels map cleanly to rage-click clustering algorithms.

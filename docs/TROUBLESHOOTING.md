@@ -172,3 +172,48 @@ The UI transformation feels sluggish, or an end-to-end assistance journey exceed
    - Long tasks ($> 50\text{ms}$) indicate high-frequency mouse event handlers or heavy Babel AST compilation. Ensure 100ms mouse throttling is functioning.
 4. **Network Latency Check:**
    - For local development, WebSocket ping should be $< 5\text{ms}$. If WebSocket latency $> 50\text{ms}$, inspect local firewall or proxy settings.
+
+---
+
+## 9. Windows PowerShell Execution Policy (`PSSecurityException`)
+
+### Symptom
+Running `npm run dev` or npm scripts fails in PowerShell with:
+```text
+File ...\npm.ps1 cannot be loaded because running scripts is disabled on this system.
+```
+
+### Solution
+Open PowerShell as Current User and set the ExecutionPolicy to RemoteSigned:
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+```
+Or run commands via Command Prompt (`cmd.exe`) where execution policy is not enforced.
+
+---
+
+## 10. Next.js Automatic Port Fallback (Port 3001 Instead of 3000)
+
+### Symptom
+Next.js outputs:
+```text
+Port 3000 is in use, trying 3001 instead.
+```
+Navigating to `http://localhost:3000` serves a stale application or 404.
+
+### Solution
+1. Identify and kill the lingering node process holding port 3000:
+   ```powershell
+   Get-NetTCPConnection -LocalPort 3000 -ErrorAction SilentlyContinue | Select-Object OwningProcess
+   Stop-Process -Id <OwningProcess> -Force
+   ```
+2. Re-launch `npm --prefix frontend run dev` to ensure it binds directly to port 3000.
+
+---
+
+## 11. High-DPI Displays & Trackpad Hardware Differences
+
+### Clarification
+- On high-DPI displays (Retina, 4K), cursor movement pixel distances can be proportionally higher.
+- AuraGen's velocity variance normalization denominator ($600\text{ px/s}$) incorporates dynamic range compression ($\sqrt{\sigma^2}$) to remain balanced across trackpads, standard optical mice, and high-DPI gaming sensors.
+- If testing on trackpads, smooth multi-touch gestures generate gentle velocity profiles; triggering friction requires erratic directional reversals ($> 45^\circ$) or rapid click bursts.

@@ -279,3 +279,29 @@ The frontend verification suite comprises **44 passing tests across 7 test suite
     }
   }
   ```
+
+### 8.2 Component Props Contract Reference
+| Component | Key Props | Type & Description |
+| :--- | :--- | :--- |
+| `<ConversationalWizard>` | `initialValues` | `Object` – Form field values to pre-populate into wizard steps. |
+| | `onUpdateValues` | `Function(values)` – Callback fired on input change to synchronize central state. |
+| | `onRestoreOriginal` | `Function()` – Callback to initiate revert back to full 21-field form. |
+| | `onSubmitWizard` | `Function(values)` – Callback when user confirms final review step. |
+| `<FinancialForm>` | `initialValues` | `Object` – 21-field initial form values. |
+| | `activeField` | `string` – Currently focused input field identifier for hesitation tracking. |
+| | `onFieldFocus` | `Function(fieldName)` – Callback fired when input receives focus. |
+| | `onSubmit` | `Function(values)` – Standard application submission handler. |
+| `<SimplifyingOverlay>` | `isVisible` | `boolean` – Flag controlling 1.2s glassmorphic transformation announcement. |
+| | `onComplete` | `Function()` – Callback fired after 1,200ms when announcement ends. |
+| `<TelemetryHUD>` | `telemetry` | `Object` – Live telemetry snapshot (metrics, score, status). |
+| | `isConnected` | `boolean` – Active WebSocket server connection status. |
+| | `onSimulate` | `Function(mode)` – Callback to trigger `confused` or `calm` simulation. |
+
+### 8.3 Viewport Responsive Breakpoints & Target Devices
+| Breakpoint | Minimum Width | Target Layout & Device Class |
+| :--- | :--- | :--- |
+| **`xs` (Mobile Portrait)** | `320px` | Single-column form, stacked stepper controls, bottom-sheet debug panel. |
+| **`sm` (Mobile Landscape)** | `640px` | Single-column with side-by-side currency/number inputs. |
+| **`md` (Tablet)** | `768px` | Two-column field layout, horizontal stepper numbers, floating HUD bar. |
+| **`lg` (Desktop)** | `1024px` | 3-column financial sections, inline telemetry charts, fixed top HUD. |
+| **`xl` (Large Displays)** | `1280px+` | Full wide-screen container with persistent inspector drawers. |

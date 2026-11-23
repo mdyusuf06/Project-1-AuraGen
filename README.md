@@ -19,7 +19,34 @@ Enterprise forms are notoriously rigid. When a user experiences cognitive overlo
 
 ---
 
-## 🏗️ System Architecture
+## 📑 Quick Navigation & Documentation Index
+
+| Section | Description | Documentation Link |
+| :--- | :--- | :--- |
+| **System Architecture** | Full-stack dataflow & WebSocket interactions | [Jump to Architecture](#️-system-architecture) |
+| **Quick Start** | Installation, environment setup & dual launcher | [Jump to Quick Start](#-quick-start--run-guide) |
+| **Telemetry Engine** | 5-channel psychomotor math & scoring | [docs/TELEMETRY_SPECIFICATION.md](docs/TELEMETRY_SPECIFICATION.md) |
+| **Fast Processing** | 180-second time budget & bottleneck analysis | [docs/FAST_PROCESSING_BUDGET.md](docs/FAST_PROCESSING_BUDGET.md) |
+| **Frontend Deep Dive**| Weeks 2–4 modules (telemetry, animation, fallback) | [docs/FRONTEND_MODULES.md](docs/FRONTEND_MODULES.md) |
+| **Troubleshooting** | Port clearing, WebSocket reconnection, Webpack reset | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) |
+| **Team Workflow** | Git branch conventions, PR checklist & testing | [docs/DEVELOPER_WORKFLOW.md](docs/DEVELOPER_WORKFLOW.md) |
+
+### ⌨️ Universal Keyboard Shortcuts
+| Shortcut | Action | Scope |
+| :--- | :--- | :--- |
+| **`Ctrl + Shift + D`** | Toggle Developer Telemetry Debug HUD | Global |
+| **`Escape`** | Close Debug HUD or trigger Form Revert | Active Modal / Assistant |
+| **`Enter`** | Advance to Next Step in Conversational Wizard | Inside Wizard Form |
+| **`Tab` / `Shift + Tab`** | Accessible sequential field navigation with visible focus rings | All Forms & Controls |
+
+### 🌐 Verified Browser & Runtime Compatibility
+- **Google Chrome**: Version 110+ (Recommended for best Framer Motion performance)
+- **Microsoft Edge**: Version 110+
+- **Mozilla Firefox**: Version 115+
+- **Apple Safari**: Version 16.4+
+- **Node.js**: v18.17.0+ (Tested on Node.js v20.x LTS)
+
+---
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
