@@ -115,33 +115,33 @@ export function simulateConfusion(options = {}) {
     let isRageClick = false;
 
     if (isHesitating) {
-      // Very slight jitter while idle on field
-      if (Math.random() < 0.2) {
-        deltaX = (Math.random() - 0.5) * 4;
-        deltaY = (Math.random() - 0.5) * 4;
+      // Very slight jitter while idle on field (hunting for information)
+      if (Math.random() < 0.25) {
+        deltaX = (Math.random() - 0.5) * 6;
+        deltaY = (Math.random() - 0.5) * 6;
       }
     } else {
-      // Erratic, jittery cursor movement
-      // Sharp zig-zags and high acceleration bursts
+      // Erratic, jittery cursor movement with sharp back-and-forth zig-zags
+      const oscillation = Math.sin(elapsedMs / 180) * 85;
       const burstFactor = Math.random() < 0.35 ? 4.5 : 1.2;
       const angle = Math.random() * 2 * Math.PI;
       const speed = (60 + Math.random() * 90) * burstFactor; // Fast bursts 270 - 675 px/tick
 
-      deltaX = Math.cos(angle) * speed;
+      deltaX = Math.cos(angle) * speed + oscillation;
       deltaY = Math.sin(angle) * speed;
 
-      // Rapid clicks / Rage clicks (especially around 8s - 12s)
+      // Rapid clicks / Rage clicks (especially around 7.5s - 11s)
       const isRageTime = elapsedMs >= 7500 && elapsedMs <= 11000;
       if (isRageTime) {
-        // High frequency clicking in small area
-        if (elapsedMs - lastClickTime >= 150) {
+        // High frequency clicking in small area (rage clusters)
+        if (elapsedMs - lastClickTime >= 140) {
           lastClickTime = elapsedMs;
           clickOccurred = true;
           isRageClick = true;
           rageClickCounter += 1;
         }
-      } else if (Math.random() < 0.12) {
-        // Random misclicks
+      } else if (Math.random() < 0.15) {
+        // Random misclicks on non-interactive areas
         lastClickTime = elapsedMs;
         clickOccurred = true;
       }

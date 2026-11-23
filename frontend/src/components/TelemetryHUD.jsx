@@ -364,6 +364,46 @@ export default function TelemetryHUD({
         </div>
       </div>
 
+      {/* Task 5: Calm vs Confused Telemetry Comparison Banner */}
+      <div className="relative mt-6 p-3.5 rounded-2xl bg-[#11172A]/70 border border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-3">
+          <span className="font-extrabold uppercase tracking-wider text-[10px] text-slate-400">
+            Telemetry Benchmark:
+          </span>
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[11px] font-semibold">
+              Calm Baseline: ~8–18 pts
+            </span>
+            <span className="text-slate-600 font-bold">vs</span>
+            <span className="px-2 py-0.5 rounded-md bg-rose-500/10 text-rose-400 border border-rose-500/30 text-[11px] font-semibold">
+              Confused Spike: &ge; 75–88 pts
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 text-[11px]">
+          <span className="text-slate-400">
+            Threshold: <strong className="text-violet-400">{threshold} pts</strong>
+          </span>
+          <span className="text-slate-400">
+            Current Score:{" "}
+            <strong className={cognitiveLoadScore >= threshold ? "text-rose-400" : "text-cyan-400"}>
+              {cognitiveLoadScore} pts
+            </strong>
+          </span>
+          <span className="text-slate-500">|</span>
+          <span className="text-slate-300 font-medium">
+            Status:{" "}
+            {cognitiveLoadScore >= threshold ? (
+              <span className="text-rose-400 font-bold">🚨 Threshold Exceeded</span>
+            ) : cognitiveLoadScore >= 45 ? (
+              <span className="text-amber-400 font-bold">⚠️ Elevated Friction</span>
+            ) : (
+              <span className="text-emerald-400 font-bold">✓ Optimal Flow</span>
+            )}
+          </span>
+        </div>
+      </div>
+
       {/* Task 3: Interactive Confusion Simulator Controls */}
       <div className="relative mt-6 pt-5 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">

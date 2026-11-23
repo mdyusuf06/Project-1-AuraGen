@@ -643,30 +643,30 @@ export function useTelemetry({
       const t = trackerRef.current;
 
       // Progressive friction stages:
-      // Stage 1 (0-2s): Jittery erratic velocity variance
-      // Stage 2 (2-5s): Long hesitation pause
-      // Stage 3 (5-8s): Burst of rage clicks + misclicks
-      // Stage 4 (8s+): High combined friction peaking >= 75
-      const burstVelocity = 500 + Math.random() * 600;
+      // Stage 1 (0-2s): Jittery erratic velocity variance with back-and-forth hunt
+      // Stage 2 (2-5s): Long hesitation pause on field (dwelling > 6000ms)
+      // Stage 3 (5-8s): Burst of rage clicks + misclicks on non-interactive areas
+      // Stage 4 (8s+): High combined friction peaking >= 75 - 88
+      const burstVelocity = 550 + Math.random() * 550;
       t.smoothedVelocity = burstVelocity;
       t.velocitySamples.push({ time: now, velocity: burstVelocity });
 
-      // Add direction events (erratic deflections)
+      // Add direction events (erratic deflections & back-and-forth)
       if (tickCount % 2 === 0) {
         t.directionEvents.push({ time: now });
-        t.directionEvents.push({ time: now });
+        t.directionEvents.push({ time: now - 50 });
       }
 
-      // Hesitation pause
+      // Hesitation dwell progression
       if (tickCount >= 3) {
-        t.lastInteractionTime = now - Math.min(8500, tickCount * 1200);
+        t.lastInteractionTime = now - Math.min(8500, tickCount * 1400);
       }
 
-      // Rage clicks
+      // Rage clicks cluster (>= 3 clicks within small radius)
       if (tickCount >= 5) {
         t.clickEvents.push({ time: now, x: 300, y: 300, isError: true });
-        t.clickEvents.push({ time: now - 100, x: 305, y: 302, isError: true });
-        t.clickEvents.push({ time: now - 200, x: 302, y: 304, isError: true });
+        t.clickEvents.push({ time: now - 80, x: 303, y: 301, isError: true });
+        t.clickEvents.push({ time: now - 160, x: 301, y: 304, isError: true });
         t.rageClickIncidents.push({ time: now });
       }
 
@@ -705,14 +705,14 @@ export function useTelemetry({
       const t = trackerRef.current;
 
       // Steady gentle velocity (near-zero variance)
-      const steadyVelocity = 180 + (Math.sin(tickCount) * 20);
+      const steadyVelocity = 160 + (Math.sin(tickCount) * 15);
       t.smoothedVelocity = steadyVelocity;
       t.velocitySamples.push({ time: now, velocity: steadyVelocity });
 
-      // Keep hesitation low (< 1000ms)
-      t.lastInteractionTime = now - 500;
+      // Keep hesitation low (< 800ms)
+      t.lastInteractionTime = now - 400;
 
-      // Occasional clean click on interactive input
+      // Occasional clean click on interactive input (no errors, no rage)
       if (tickCount % 4 === 0) {
         t.clickEvents.push({ time: now, x: 450, y: 300, isError: false });
       }

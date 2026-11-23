@@ -404,6 +404,67 @@ console.log("=================================================================")
   console.log("✅ Test 12 Passed: Event processing & numerical stability safeguards verified");
 }
 
+// -----------------------------------------------------------------------------
+// Test 13: Calm vs Confused Comparative Calibration
+// -----------------------------------------------------------------------------
+{
+  const calmProfile = {
+    mouseVelocity: 160,
+    velocityVariance: 12000,
+    hesitationMs: 400,
+    rageClicks: 0,
+    clickErrorRate: 0,
+    directionChanges: 1
+  };
+  const calmScore = computeCognitiveLoadScore(calmProfile);
+  assert.ok(calmScore <= 25, `Calm user score (${calmScore}) must be <= 25`);
+
+  const confusedProfile = {
+    mouseVelocity: 820,
+    velocityVariance: 320000,
+    hesitationMs: 6500,
+    rageClicks: 4,
+    clickErrorRate: 0.45,
+    directionChanges: 14
+  };
+  const confusedScore = computeCognitiveLoadScore(confusedProfile);
+  assert.ok(confusedScore >= 70, `Confused user score (${confusedScore}) must reach or exceed 70`);
+
+  const scoreDelta = confusedScore - calmScore;
+  assert.ok(scoreDelta >= 50, `Score delta between confused (${confusedScore}) and calm (${calmScore}) must be >= 50 pts (actual: ${scoreDelta})`);
+
+  console.log(`✅ Test 13 Passed: Calm (${calmScore}) vs Confused (${confusedScore}) comparative calibration verified (Δ = ${scoreDelta} pts >= 50)`);
+}
+
+// -----------------------------------------------------------------------------
+// Test 14: Hesitation Dwell Progression & Rage Click Clustering
+// -----------------------------------------------------------------------------
+{
+  // Hesitation scaling across progressive dwell intervals
+  const norm1s = normalizeTelemetryMetrics({ hesitationMs: 1000 }).hesitation;
+  const norm4s = normalizeTelemetryMetrics({ hesitationMs: 4000 }).hesitation;
+  const norm8s = normalizeTelemetryMetrics({ hesitationMs: 8000 }).hesitation;
+  const norm12s = normalizeTelemetryMetrics({ hesitationMs: 12000 }).hesitation;
+
+  assert.equal(norm1s, 12.5, "1s hesitation should normalize to 12.5%");
+  assert.equal(norm4s, 50, "4s hesitation should normalize to 50%");
+  assert.equal(norm8s, 100, "8s hesitation should normalize to 100%");
+  assert.equal(norm12s, 100, "12s hesitation should cleanly clamp at 100%");
+
+  // Rage click incidents scaling
+  const norm0Rage = normalizeTelemetryMetrics({ rageClicks: 0 }).rageClicks;
+  const norm1Rage = normalizeTelemetryMetrics({ rageClicks: 1 }).rageClicks;
+  const norm3Rage = normalizeTelemetryMetrics({ rageClicks: 3 }).rageClicks;
+  const norm5Rage = normalizeTelemetryMetrics({ rageClicks: 5 }).rageClicks;
+
+  assert.equal(norm0Rage, 0, "0 rage clicks should normalize to 0%");
+  assert.ok(norm1Rage > 30 && norm1Rage < 35, "1 rage click should normalize to ~33.3%");
+  assert.equal(norm3Rage, 100, "3 rage clicks should normalize to 100%");
+  assert.equal(norm5Rage, 100, "5 rage clicks should clamp to 100%");
+
+  console.log("✅ Test 14 Passed: Hesitation dwell progression & rage click clustering verified");
+}
+
 console.log("\n=================================================================");
-console.log("🎉 All 12 Unit Tests Passed Successfully!");
+console.log("🎉 All 14 Unit Tests Passed Successfully!");
 console.log("=================================================================");
