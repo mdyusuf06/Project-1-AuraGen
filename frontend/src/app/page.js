@@ -31,6 +31,128 @@ const DEFAULT_THRESHOLD = Number(process.env.NEXT_PUBLIC_COGNITIVE_LOAD_THRESHOL
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080";
 
 /**
+ * High-fidelity fallback dynamic wizard component code string.
+ * Used for instant judge demo toggling or offline demonstration.
+ */
+export const DEMO_DEFAULT_CODE = `
+import React, { useState } from "react";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, Button, Input, Select, Badge } from "DS";
+
+export default function DynamicAuraGenWizard({ initialValues = {}, onChange, onSubmit, onCancel }) {
+  const [formData, setFormData] = useState({
+    annualIncome: initialValues.annualIncome || "145000",
+    loanAmount: initialValues.loanAmount || "350000",
+    businessType: initialValues.businessType || "llc",
+    loanPurpose: initialValues.loanPurpose || "expansion"
+  });
+
+  const handleChange = (field, val) => {
+    const updated = { ...formData, [field]: val };
+    setFormData(updated);
+    if (typeof onChange === "function") {
+      onChange(updated);
+    }
+  };
+
+  return (
+    <Card className="w-full max-w-3xl mx-auto p-6 md:p-8 bg-slate-900 border border-indigo-500/30 rounded-2xl shadow-2xl text-white space-y-6">
+      <CardHeader className="border-b border-slate-800 pb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2 mb-1.5">
+              <Badge variant="indigo">Dynamic UI Injected</Badge>
+              <span className="text-[11px] font-mono text-cyan-300 bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-500/30">
+                safeCompiler • In-Browser Babel Transpile
+              </span>
+            </div>
+            <CardTitle className="text-xl font-bold text-white">
+              AI-Generated Credit Streamlining Wizard
+            </CardTitle>
+            <CardDescription className="text-xs text-slate-300">
+              Form dynamically converted from static 21-field grid into high-conversion guided workflow.
+            </CardDescription>
+          </div>
+          <span className="text-3xl">✨</span>
+        </div>
+      </CardHeader>
+
+      <CardContent className="space-y-4 pt-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Input
+            id="dyn_annualIncome"
+            name="annualIncome"
+            label="Annual Business Revenue ($)"
+            value={formData.annualIncome}
+            onChange={(e) => handleChange("annualIncome", e.target.value)}
+            placeholder="e.g. 150000"
+            className="text-white"
+          />
+
+          <Input
+            id="dyn_loanAmount"
+            name="loanAmount"
+            label="Requested Loan Amount ($)"
+            value={formData.loanAmount}
+            onChange={(e) => handleChange("loanAmount", e.target.value)}
+            placeholder="e.g. 350000"
+            className="text-white"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Select
+            id="dyn_businessType"
+            name="businessType"
+            label="Entity Structure"
+            value={formData.businessType}
+            onChange={(e) => handleChange("businessType", e.target.value)}
+            options={[
+              { value: "llc", label: "Limited Liability Company (LLC)" },
+              { value: "c_corp", label: "C-Corporation" },
+              { value: "s_corp", label: "S-Corporation" },
+              { value: "sole_prop", label: "Sole Proprietorship" }
+            ]}
+          />
+
+          <Select
+            id="dyn_loanPurpose"
+            name="loanPurpose"
+            label="Intended Capital Allocation"
+            value={formData.loanPurpose}
+            onChange={(e) => handleChange("loanPurpose", e.target.value)}
+            options={[
+              { value: "expansion", label: "Business Expansion" },
+              { value: "working_capital", label: "Working Capital" },
+              { value: "equipment", label: "Equipment Purchase" },
+              { value: "refinancing", label: "Debt Refinancing" }
+            ]}
+          />
+        </div>
+      </CardContent>
+
+      <CardFooter className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/80 pt-4">
+        <Button
+          variant="outline"
+          onClick={onCancel}
+          className="text-slate-300 hover:text-white border-slate-700 bg-slate-800 text-xs"
+        >
+          ← Restore Original Form
+        </Button>
+
+        <Button
+          variant="primary"
+          onClick={() => (onSubmit ? onSubmit(formData) : alert("Application Submitted!"))}
+          className="bg-gradient-to-r from-indigo-500 to-cyan-500 text-white font-bold text-xs shadow-lg shadow-indigo-500/25 px-5 py-2.5"
+        >
+          Submit Commercial Application →
+        </Button>
+      </CardFooter>
+    </Card>
+  );
+}
+`;
+
+/**
  * Fluid, non-jarring morph transitions for AuraGen self-healing UI.
  */
 const bannerVariants = {
@@ -86,6 +208,7 @@ export default function AuraGenDemoPage() {
     reconnectAttempt,
     nextReconnectDelayMs,
     sendTelemetry,
+    sendGenerateRequest,
     sendRevert,
     onMessage,
     reconnect
@@ -148,26 +271,50 @@ export default function AuraGenDemoPage() {
     }
   });
 
-  const handleTelemetryTrigger = (snapshot) => {
-    console.log(
-      `[Telemetry] 🚨 Cognitive Load Threshold Exceeded (${snapshot.cognitiveLoadScore} >= ${currentThreshold}) at "${snapshot.activeField}". Morphing UI...`
-    );
+  const handleTelemetryTrigger = useCallback(
+    (snapshot) => {
+      const targetField = snapshot?.activeField || activeField || "annualIncome";
+      const triggerScore =
+        typeof snapshot?.cognitiveLoadScore === "number"
+          ? snapshot.cognitiveLoadScore
+          : 88;
 
-    generationStartTimeRef.current = Date.now();
-    setGenerationTiming(null);
+      console.log(
+        `[Telemetry] 🚨 Cognitive Load Threshold Exceeded (${triggerScore} >= ${currentThreshold}) at "${targetField}". Morphing UI and triggering generate_request...`
+      );
 
-    setShowSimplifyingOverlay(true);
+      generationStartTimeRef.current = Date.now();
+      setGenerationTiming(null);
 
-    if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
-    if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
+      setShowSimplifyingOverlay(true);
 
-    startGeneration({ activeField: snapshot.activeField });
+      if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
+      if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
 
-    overlayTimerRef.current = setTimeout(() => {
-      setShowSimplifyingOverlay(false);
-      setViewMode("loading");
-    }, 1200);
-  };
+      startGeneration({ activeField: targetField });
+
+      // Trigger WebSocket generate_request payload to backend LLM pipeline
+      sendGenerateRequest({
+        sessionId,
+        activeField: targetField,
+        userInput: sharedFormValues,
+        formStateSnapshot: snapshot?.formStateSnapshot || {
+          formValues: sharedFormValues,
+          activeField: targetField,
+          timestamp: Date.now()
+        },
+        score: triggerScore,
+        domContext: { activeField: targetField },
+        formFields: Object.keys(sharedFormValues)
+      });
+
+      overlayTimerRef.current = setTimeout(() => {
+        setShowSimplifyingOverlay(false);
+        setViewMode("loading");
+      }, 1200);
+    },
+    [activeField, currentThreshold, sendGenerateRequest, sessionId, sharedFormValues, startGeneration]
+  );
 
   const {
     metrics,
@@ -203,6 +350,48 @@ export default function AuraGenDemoPage() {
     sendTelemetry,
     onThreshold: handleTelemetryTrigger
   });
+
+  // Mid-Project Demo Helpers: Manual trigger & Judge toggle
+  const handleManualGenerateRequest = useCallback(() => {
+    handleTelemetryTrigger({
+      cognitiveLoadScore: Math.max(score, 88),
+      activeField: activeField || "annualIncome",
+      formStateSnapshot: {
+        formValues: sharedFormValues,
+        activeField: activeField || "annualIncome",
+        timestamp: Date.now()
+      }
+    });
+  }, [activeField, handleTelemetryTrigger, score, sharedFormValues]);
+
+  const handleToggleViewMode = useCallback(() => {
+    if (viewMode === "form") {
+      setViewMode("wizard");
+      setAriaAnnouncement("Switched to dynamic AI-generated UI wizard.");
+    } else {
+      handleRevertToOriginalForm();
+    }
+  }, [viewMode, handleRevertToOriginalForm]);
+
+  // Trigger WebSocket generate_request when useTelemetry score crosses threshold (>= 70)
+  const previousScoreRef = useRef(score);
+  useEffect(() => {
+    const prev = previousScoreRef.current;
+    previousScoreRef.current = score;
+
+    if (score >= currentThreshold && prev < currentThreshold && viewMode === "form" && !isGenerating) {
+      console.log(`[Integration] Telemetry score crossed threshold (${score} >= ${currentThreshold}). Dispatching generate_request.`);
+      handleTelemetryTrigger({
+        cognitiveLoadScore: score,
+        activeField: activeField || "annualIncome",
+        formStateSnapshot: {
+          formValues: sharedFormValues,
+          activeField: activeField || "annualIncome",
+          timestamp: Date.now()
+        }
+      });
+    }
+  }, [score, currentThreshold, viewMode, isGenerating, activeField, sharedFormValues, handleTelemetryTrigger]);
 
   useEffect(() => {
     return () => {
@@ -456,6 +645,54 @@ export default function AuraGenDemoPage() {
         )}
       </AnimatePresence>
 
+      {/* Mid-Project Judge Demo Toolbar */}
+      <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-slate-900/95 via-[#11172A]/95 to-slate-900/95 border border-indigo-500/30 shadow-[0_0_25px_rgba(128,87,255,0.15)] backdrop-blur-xl flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-cyan-500 flex items-center justify-center text-white text-lg shadow-lg shadow-indigo-600/30">
+            ⚖️
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-cyan-400">
+                Judge Demo Controls
+              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-950/90 text-indigo-300 border border-indigo-500/30 font-mono">
+                {viewMode === "form" ? "Static 21-Field Form" : "DynamicRenderer (Evaluated UI)"}
+              </span>
+            </div>
+            <p className="text-xs text-slate-300">
+              Mid-project demo: Manually switch between the static FinancialForm and dynamically evaluated DynamicRenderer.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={handleToggleViewMode}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-md focus-visible:ring-2 focus-visible:ring-cyan-400 flex items-center gap-2 ${
+              viewMode === "form"
+                ? "bg-gradient-to-r from-indigo-600 to-cyan-500 hover:from-indigo-500 hover:to-cyan-400 text-white shadow-indigo-500/30 scale-[1.02]"
+                : "bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+            }`}
+            title="Toggle between static form and dynamic generated UI"
+          >
+            <span>{viewMode === "form" ? "✨ Switch to Generated UI" : "📋 Switch to Static Form"}</span>
+          </button>
+
+          {viewMode === "form" && (
+            <button
+              type="button"
+              onClick={handleManualGenerateRequest}
+              className="px-3.5 py-2 rounded-xl bg-indigo-950/70 hover:bg-indigo-900/80 text-cyan-300 border border-indigo-500/40 text-xs font-semibold transition-all hover:scale-[1.01]"
+              title="Simulate friction breach (>= 70) and trigger WebSocket generate_request"
+            >
+              ⚡ Trigger LLM Generate
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Main Card Area with reserved min-height to prevent CLS */}
       <div
         ref={cardRegionRef}
@@ -533,56 +770,37 @@ export default function AuraGenDemoPage() {
               layout="position"
               className="w-full"
             >
-              {latestComponent?.code ? (
-                <DynamicRenderer
-                  code={latestComponent.code}
-                  initialValues={sharedFormValues}
-                  onSubmit={(data) => {
-                    console.log("[AuraGen] Dynamic Form Submitted successfully:", data);
-                    setSharedFormValues((prev) => ({ ...prev, ...data }));
-                    alert("Application submitted successfully via AuraGen Generative Wizard!");
-                    handleRevertToOriginalForm();
-                  }}
-                  onCancel={handleRevertToOriginalForm}
-                  fallback={
-                    <ErrorBoundary
-                      key={wizardKey}
-                      onRestoreOriginal={handleRevertToOriginalForm}
-                      onRetry={() => {
-                        setWizardKey((prev) => prev + 1);
-                        startGeneration({ activeField });
-                        setViewMode("loading");
-                      }}
-                    >
-                      <ConversationalWizard
-                        activeField={activeField}
-                        initialValues={sharedFormValues}
-                        onUpdateValues={(vals) => setSharedFormValues((prev) => ({ ...prev, ...vals }))}
-                        onRestoreOriginal={handleRevertToOriginalForm}
-                        score={score}
-                      />
-                    </ErrorBoundary>
-                  }
-                />
-              ) : (
-                <ErrorBoundary
-                  key={wizardKey}
-                  onRestoreOriginal={handleRevertToOriginalForm}
-                  onRetry={() => {
-                    setWizardKey((prev) => prev + 1);
-                    startGeneration({ activeField });
-                    setViewMode("loading");
-                  }}
-                >
-                  <ConversationalWizard
-                    activeField={activeField}
-                    initialValues={sharedFormValues}
-                    onUpdateValues={(vals) => setSharedFormValues((prev) => ({ ...prev, ...vals }))}
+              <DynamicRenderer
+                code={latestComponent?.code || DEMO_DEFAULT_CODE}
+                initialValues={sharedFormValues}
+                onChange={(vals) => setSharedFormValues((prev) => ({ ...prev, ...vals }))}
+                onSubmit={(data) => {
+                  console.log("[AuraGen] Dynamic Form Submitted successfully:", data);
+                  setSharedFormValues((prev) => ({ ...prev, ...data }));
+                  alert("Application submitted successfully via AuraGen Generative Wizard!");
+                  handleRevertToOriginalForm();
+                }}
+                onCancel={handleRevertToOriginalForm}
+                fallback={
+                  <ErrorBoundary
+                    key={wizardKey}
                     onRestoreOriginal={handleRevertToOriginalForm}
-                    score={score}
-                  />
-                </ErrorBoundary>
-              )}
+                    onRetry={() => {
+                      setWizardKey((prev) => prev + 1);
+                      startGeneration({ activeField });
+                      setViewMode("loading");
+                    }}
+                  >
+                    <ConversationalWizard
+                      activeField={activeField}
+                      initialValues={sharedFormValues}
+                      onUpdateValues={(vals) => setSharedFormValues((prev) => ({ ...prev, ...vals }))}
+                      onRestoreOriginal={handleRevertToOriginalForm}
+                      score={score}
+                    />
+                  </ErrorBoundary>
+                }
+              />
             </motion.div>
           )}
         </AnimatePresence>

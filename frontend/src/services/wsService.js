@@ -240,6 +240,36 @@ export function createAuraGenWsService(url, options = {}) {
   }
 
   /**
+   * Sends a generate_request payload to trigger LLM component generation.
+   * @param {object} payload - { sessionId, activeField, userInput, domContext, formFields, score, templateId }
+   * @returns {boolean} True if sent
+   */
+  function sendGenerateRequest(payload = {}) {
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+
+    const message = {
+      type: "generate_request",
+      sessionId: String(payload.sessionId || "anonymous"),
+      activeField: String(payload.activeField || payload.activeFieldId || "annualIncome"),
+      userInput: payload.userInput || payload.formValues || {},
+      domContext: payload.domContext || {},
+      formFields: payload.formFields || [],
+      score: typeof payload.score === "number" ? payload.score : 85,
+      templateId: payload.templateId || null,
+      timestamp: Number(payload.timestamp || Date.now())
+    };
+
+    if (payload.formStateSnapshot) {
+      message.formStateSnapshot = payload.formStateSnapshot;
+    }
+
+    socket.send(JSON.stringify(message));
+    return true;
+  }
+
+  /**
    * Subscribes to incoming parsed JSON messages from the WebSocket server.
    * @param {function} callback
    * @returns {function} Unsubscribe function
@@ -270,6 +300,7 @@ export function createAuraGenWsService(url, options = {}) {
     },
     getStatus: () => status,
     sendTelemetry,
+    sendGenerateRequest,
     sendRevert,
     onMessage,
     onStatusChange
