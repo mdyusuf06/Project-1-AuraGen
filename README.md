@@ -224,7 +224,7 @@ This concurrently boots:
 
 ## 🧠 Behavioral Telemetry & Scoring Details
 
-AuraGen samples mouse and keyboard dynamics over a **10-second rolling window** with memory-bounded buffers:
+AuraGen samples mouse and keyboard dynamics over a **10-second rolling window** with memory-bounded buffers
 
 $$\text{Cognitive Load Score} = \sum_{i=1}^5 w_i \cdot \text{NormalizedMetric}_i \in [0, 100]$$
 
@@ -261,14 +261,6 @@ AuraGen enforces a fast-processing mandate: the complete end-to-end user assista
 | **5** | **AST Validation & Rendering** | **25 sec** | Babel AST security parsing, allowlist verification, spring injection, step navigation. |
 | **6** | **State Sync & Recovery Buffer** | **15 sec** | 100% bidirectional 21-field value preservation, error boundary recovery buffer, revert readiness. |
 | **Total** | **End-to-End Processing Budget** | **180 sec** | **Complete user assistance workflow target (3 minutes maximum)** |
-
-### Core Latency Reduction Mechanisms
-1. **100ms Event Throttling & FIFO Pruning:** Mouse tracking is throttled to 100ms using `performance.now()`, and rolling event buffers are capped ($\le 250$ samples) and pruned every 10 seconds.
-2. **Dual-Layer Timeout Architecture:** A micro-timeout of **4,000ms** triggers prebuilt template fallback (`income-stepper`, `loan-details`, `quick-review`) if LLM generation stalls, while the macro-budget of **180s** bounds the complete journey.
-3. **60-Second Cooldown & Hysteresis:** Prevents redundant code generation calls during user adaptation; trigger latch resets only when score drops below 85% ($59.5$).
-4. **Zero-Reload State Synchronization:** Reverting back to the original form is instantaneous and preserves 100% of user data in-memory without network roundtrips.
-
-*(For detailed profiling methodology and bottleneck analysis, see [docs/FAST_PROCESSING_BUDGET.md](docs/FAST_PROCESSING_BUDGET.md).)*
 
 ---
 
@@ -319,23 +311,6 @@ npm --prefix frontend run build
 | `frontend/tests/formRevert.test.mjs` | 4 | Full 21-field round-trip state preservation, multi-switch stability, `{ type: "revert" }` protocol dispatch. |
 | `frontend/tests/accessibilityAndDebug.test.mjs` | 3 | Reduced motion accessibility adaptations, ARIA live announcements, TelemetryDebugPanel rendering. |
 | `backend/tests/test-ws-server.js` | 5 | HTTP `/health` check, WebSocket handshake, schema validation, low-score logging, threshold breach code generation. |
-
----
-
-## 🛠️ Troubleshooting & Support
-
-If you encounter port conflicts, WebSocket dropouts, or Next.js cache anomalies:
-
-```powershell
-# Terminate lingering processes on port 3000 or 8080 (Windows PowerShell)
-Get-NetTCPConnection -LocalPort 3000, 8080 -ErrorAction SilentlyContinue | Select-Object OwningProcess, LocalPort
-Stop-Process -Id <PID> -Force
-
-# Clear Next.js build cache
-Remove-Item -Recurse -Force frontend\.next -ErrorAction SilentlyContinue
-```
-
-*(For in-depth troubleshooting scenarios, see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).)*
 
 ---
 
