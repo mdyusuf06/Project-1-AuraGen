@@ -9,7 +9,7 @@
     "build": "next build",
     "start": "next start -p 3000",
     "lint": "next lint",
-    "test": "node tests/telemetry.test.mjs && node tests/dynamic_renderer.test.mjs && node tests/safe_compiler.test.mjs && node tests/dynamic_renderer_component.test.mjs && node tests/animation.test.mjs && node tests/morphAnimation.test.mjs && node tests/fallback.test.mjs && node tests/fallbackTimeout.test.mjs && node tests/formRevert.test.mjs && node tests/accessibilityAndDebug.test.mjs"
+    "test": "node tests/telemetry.test.mjs && node tests/dynamic_renderer.test.mjs && node tests/safe_compiler.test.mjs && node tests/dynamic_renderer_component.test.mjs && node tests/animation.test.mjs && node tests/morphAnimation.test.mjs && node tests/fallback.test.mjs && node tests/fallbackTimeout.test.mjs && node tests/formRevert.test.mjs && node tests/accessibilityAndDebug.test.mjs && node tests/formState.test.mjs"
   },
   "dependencies": {
     "@babel/standalone": "^8.1.2",
