@@ -5,18 +5,10 @@ import {
   WS_PORT, COGNITIVE_LOAD_THRESHOLD, GENERATION_COOLDOWN_MS, MAX_MESSAGE_BYTES
 } from "./config/constants.js";
 import { validateTelemetryMessage } from "./validators/telemetryValidator.js";
-import { generateComponent } from "./services/codeGenService.js";
-<<<<<<< HEAD
-import { validateComponentAst } from "./services/astValidator.js";
-import { createSessionStore } from "./store/sessionStore.js";
-
-/**
- * Creates the HTTP + WebSocket server instance for AuraGen.
- * Supports dependency injection of `codeGenerator` and `sessionStore` for testing.
- */
-=======
+import { approveComponentResponse, generateComponent } from "./services/codeGenService.js";
 import { publicGenerationError } from "./services/generationErrors.js";
 import { createRateLimit } from "./services/rateLimit.js";
+import { createSessionStore } from "./store/sessionStore.js";
 
 const localOrigins = ["http://localhost:3000", "http://127.0.0.1:3000", "http://[::1]:3000"];
 const minute = 60_000;
@@ -35,88 +27,13 @@ function send(ws, message) {
   ws.send(serialized);
 }
 
->>>>>>> e6820a9 (feat: implement AuraGen design system and secure wizard generation)
 export function createAuraGenServer({
   port = WS_PORT,
   host = process.env.WS_HOST || (process.env.NODE_ENV === "production" ? "127.0.0.1" : undefined),
   threshold = COGNITIVE_LOAD_THRESHOLD,
   cooldownMs = GENERATION_COOLDOWN_MS,
   codeGenerator = generateComponent,
-<<<<<<< HEAD
-  sessionStore = createSessionStore()
-} = {}) {
-  // Per-session generation cooldown/in-flight lock
-  const generationLocks = new Map();
-
-  function sendJson(res, statusCode, payload) {
-    res.writeHead(statusCode, {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type"
-    });
-    res.end(JSON.stringify(payload));
-  }
-
-  const httpServer = http.createServer((req, res) => {
-    if (req.method === "OPTIONS") {
-      res.writeHead(204, {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type"
-      });
-      res.end();
-      return;
-    }
-
-    const requestUrl = new URL(req.url || "/", "http://localhost");
-    const pathname = requestUrl.pathname;
-
-    // Health check endpoint
-    if (req.method === "GET" && pathname === "/health") {
-      sendJson(res, 200, {
-        status: "ok",
-        service: "auragen-websocket-server",
-        threshold,
-        cooldownMs,
-        connectedClients: wss.clients.size,
-        activeSessions: sessionStore.size,
-        timestamp: Date.now()
-      });
-      return;
-    }
-
-    // List all tracked sessions
-    if (req.method === "GET" && pathname === "/api/sessions") {
-      sendJson(res, 200, {
-        sessions: sessionStore.listSessions(),
-        total: sessionStore.size
-      });
-      return;
-    }
-
-    // Historical friction metrics for a specific session: GET /api/sessions/:sessionId/metrics
-    const sessionMetricsMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/metrics$/);
-    if (req.method === "GET" && sessionMetricsMatch) {
-      const sessionId = decodeURIComponent(sessionMetricsMatch[1]);
-      const metrics = sessionStore.getSessionMetrics(sessionId);
-
-      if (!metrics) {
-        sendJson(res, 404, {
-          error: "Session not found",
-          sessionId
-        });
-        return;
-      }
-
-      sendJson(res, 200, metrics);
-      return;
-    }
-
-    sendJson(res, 404, {
-      error: "Not found. Available routes: GET /health, GET /api/sessions, GET /api/sessions/:sessionId/metrics"
-    });
-=======
+  sessionStore = createSessionStore(),
   allowedOrigins = process.env.WS_ALLOWED_ORIGINS?.split(",").map((origin) => origin.trim()) ??
     (process.env.NODE_ENV === "production" ? [] : localOrigins),
   allowMissingOrigin = process.env.NODE_ENV !== "production",
@@ -137,20 +54,49 @@ export function createAuraGenServer({
   const upgrades = createRateLimit(upgradesPerIp, minute, 1024);
   const messages = createRateLimit(messagesPerIp, minute, 1024);
   const generations = createRateLimit(generationsPerIp, minute, 1024);
+  const sessionGenerations = new WeakMap();
 
   const httpServer = http.createServer({
     maxHeaderSize: 8192, headersTimeout: 5000, requestTimeout: 10_000, connectionsCheckingInterval: 1000
   }, (req, res) => {
-    const healthy = req.method === "GET" && req.url === "/health";
-    res.writeHead(healthy ? 200 : 404, { "Content-Type": "application/json" });
-    res.end(JSON.stringify(healthy ? {
-      status: "ok",
-      service: "auragen-websocket-server",
-      threshold,
-      cooldownMs,
-      connectedClients: wss.clients.size,
-      timestamp: Date.now()
-    } : { error: "Not found. Connect via WebSocket or GET /health." }));
+    const origin = req.headers.origin;
+    if (origins.has(origin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Vary", "Origin");
+    }
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, {
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type"
+      });
+      return res.end();
+    }
+    const pathname = req.url?.split("?")[0];
+    const sendJson = (status, body) => {
+      res.writeHead(status, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(body));
+    };
+    if (req.method === "GET" && pathname === "/health") {
+      return sendJson(200, {
+        status: "ok", service: "auragen-websocket-server", threshold, cooldownMs,
+        connectedClients: wss.clients.size, activeSessions: sessionStore.size, timestamp: Date.now()
+      });
+    }
+    if (req.method === "GET" && pathname === "/api/sessions") {
+      return sendJson(200, { sessions: sessionStore.listSessions(), total: sessionStore.size });
+    }
+    const metricsRoute = pathname?.match(/^\/api\/sessions\/([^/]+)\/metrics$/);
+    if (req.method === "GET" && metricsRoute) {
+      let sessionId;
+      try {
+        sessionId = decodeURIComponent(metricsRoute[1]);
+      } catch {
+        return sendJson(400, { error: "Invalid session identifier" });
+      }
+      const metrics = sessionStore.getSessionMetrics(sessionId);
+      return metrics ? sendJson(200, metrics) : sendJson(404, { error: "Session not found", sessionId });
+    }
+    return sendJson(404, { error: "Not found. Connect via WebSocket or GET /health." });
   });
   httpServer.maxConnections = maxClients + 32;
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES, perMessageDeflate: false });
@@ -169,7 +115,6 @@ export function createAuraGenServer({
       return rejectUpgrade(socket, 401);
     }
     wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, ip));
->>>>>>> e6820a9 (feat: implement AuraGen design system and secure wizard generation)
   });
 
   wss.on("connection", (ws, ip) => {
@@ -191,145 +136,6 @@ export function createAuraGenServer({
     });
     send(ws, { type: "connected", threshold, timestamp: Date.now() });
 
-<<<<<<< HEAD
-    // Notify client of successful connection and active cognitive load threshold
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(
-        JSON.stringify({
-          type: "connected",
-          threshold,
-          timestamp: Date.now()
-        })
-      );
-    }
-
-    ws.on("message", async (rawData) => {
-      const validation = validateTelemetryMessage(rawData);
-
-      if (!validation.valid) {
-        console.warn(`[WS] Rejected invalid telemetry message (Zod):`, validation.errors);
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(
-            JSON.stringify({
-              type: "error",
-              message: "Invalid telemetry message format",
-              errors: validation.errors
-            })
-          );
-        }
-        return;
-      }
-
-      const telemetry = validation.data;
-      const {
-        sessionId,
-        timestamp,
-        metrics,
-        instantScore,
-        rollingAverageScore,
-        activeFieldId,
-        formStateSnapshot,
-        formFields
-      } = telemetry;
-
-      // Aggregate packet into the in-memory LRU session store
-      sessionStore.recordTelemetry(telemetry, threshold);
-
-      const snapshotFieldCount = formStateSnapshot?.values
-        ? Object.keys(formStateSnapshot.values).filter((k) => formStateSnapshot.values[k] !== "").length
-        : 0;
-
-      console.log(
-        `[Telemetry] ${new Date(timestamp).toISOString()} | session="${sessionId}" | field="${activeFieldId || "none"}" | instant=${instantScore} | rolling5s=${rollingAverageScore}/${threshold} | vel=${metrics.mouseVelocity} | hes=${metrics.hesitationMs}ms | rage=${metrics.rageClicks}${formStateSnapshot ? ` | snapshotFields=${snapshotFieldCount}` : ""}`
-      );
-
-      // Evaluate threshold using the smoothed 5-second rolling average score
-      if (rollingAverageScore < threshold) {
-        return;
-      }
-
-      // Guard against flooding generation requests for the same session/field during cooldown
-      const now = Date.now();
-      const lockState = generationLocks.get(sessionId) || {
-        inFlight: false,
-        lastTriggeredAt: 0,
-        lastField: null
-      };
-
-      if (lockState.inFlight) {
-        console.log(`[CodeGen] Generation already in flight for session "${sessionId}". Skipping.`);
-        return;
-      }
-
-      const withinCooldown =
-        now - lockState.lastTriggeredAt < cooldownMs && lockState.lastField === activeFieldId;
-
-      if (withinCooldown) {
-        console.log(
-          `[CodeGen] Cooldown active for session "${sessionId}" on field "${activeFieldId}". Skipping duplicate trigger.`
-        );
-        return;
-      }
-
-      lockState.inFlight = true;
-      lockState.lastField = activeFieldId;
-      generationLocks.set(sessionId, lockState);
-
-      console.log(
-        `[CodeGen] 🚨 Threshold breached (rolling5s=${rollingAverageScore} >= ${threshold}, instant=${instantScore}) at "${activeFieldId}". Calling generateComponent()...`
-      );
-
-      try {
-        const preservedUserInput = formStateSnapshot?.values || telemetry.userInput || {};
-        const rawCode = await codeGenerator({
-          activeField: activeFieldId || "annualIncome",
-          formFields,
-          userInput: preservedUserInput,
-          domContext: formStateSnapshot?.domContext,
-          score: rollingAverageScore
-        });
-
-        // AST security validation before sending code to the client
-        const code = validateComponentAst(rawCode);
-
-        lockState.lastTriggeredAt = Date.now();
-        lockState.inFlight = false;
-        generationLocks.set(sessionId, lockState);
-
-        sessionStore.recordComponentGeneration(sessionId, {
-          activeFieldId: activeFieldId || "annualIncome",
-          score: rollingAverageScore,
-          codeLength: code.length
-        });
-
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(
-            JSON.stringify({
-              type: "component",
-              code
-            })
-          );
-          console.log(
-            `[CodeGen] ✅ AST-validated & sent { type: "component", code } (${code.length} chars, preservedFields=${Object.keys(preservedUserInput).length}) to session "${sessionId}".`
-          );
-        }
-      } catch (err) {
-        lockState.inFlight = false;
-        generationLocks.set(sessionId, lockState);
-        console.error(`[CodeGen] ❌ Blocked or failed component for session "${sessionId}":`, err.message);
-
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(
-            JSON.stringify({
-              type: "error",
-              message:
-                err.name === "ASTSecurityError"
-                  ? "Generated component failed AST security validation"
-                  : "Component generation failed",
-              details: err.message
-            })
-          );
-=======
     ws.on("message", async (rawData, binary) => {
       if (ws.readyState !== WebSocket.OPEN) return;
       const now = Date.now();
@@ -344,14 +150,19 @@ export function createAuraGenServer({
       }
 
       let started = false;
+      let sessionGeneration;
       try {
         const validation = validateTelemetryMessage(rawData);
         if (!validation.valid) {
           send(ws, { type: "error", code: "INVALID_TELEMETRY", message: "Invalid telemetry message format", errors: validation.errors });
           return;
         }
-        const { cognitiveLoadScore, activeField, formFields } = validation.data;
-        if (cognitiveLoadScore < threshold || inFlight || (lastField === activeField && now < nextGenerationAt)) return;
+        const telemetry = validation.data;
+        const { rollingAverageScore, activeField, formFields, sessionId } = telemetry;
+        const session = sessionStore.recordTelemetry(telemetry, threshold);
+        if (rollingAverageScore < threshold || inFlight || (lastField === activeField && now < nextGenerationAt)) return;
+        const previous = sessionGenerations.get(session);
+        if (previous?.inFlight || (previous?.field === activeField && now < previous.nextGenerationAt)) return;
         lastField = activeField;
         nextGenerationAt = now + cooldownMs;
         if (!generations.take(ip, now)) {
@@ -359,24 +170,34 @@ export function createAuraGenServer({
           return;
         }
         inFlight = started = true;
-        const code = await codeGenerator({
-          activeField: activeField || (formFields === undefined ? "annualIncome" : ""),
+        sessionGeneration = { inFlight: true, field: activeField, nextGenerationAt: 0 };
+        sessionGenerations.set(session, sessionGeneration);
+        const generationField = activeField || (formFields === undefined ? "annualIncome" : "");
+        const code = await approveComponentResponse(codeGenerator, {
+          activeField: generationField,
           formFields,
-          score: cognitiveLoadScore,
+          score: rollingAverageScore,
           signal: disconnected.signal
+        });
+        if (ws.readyState !== WebSocket.OPEN) return;
+        sessionStore.recordComponentGeneration(sessionId, {
+          activeFieldId: generationField, score: rollingAverageScore, codeLength: code.length
         });
         send(ws, { type: "component", code });
       } catch (error) {
         const { code, message, issues } = publicGenerationError(error);
         send(ws, {
-          type: "error", code, message: "Component generation failed", details: message,
+          type: "error", code,
+          message: code === "INVALID_COMPONENT" ? "Generated component failed AST security validation" : "Component generation failed",
+          details: message,
           ...(issues.length > 0 && { issues })
         });
       } finally {
         if (started) {
           inFlight = false;
           nextGenerationAt = Date.now() + cooldownMs;
->>>>>>> e6820a9 (feat: implement AuraGen design system and secure wizard generation)
+          sessionGeneration.inFlight = false;
+          sessionGeneration.nextGenerationAt = nextGenerationAt;
         }
       }
     });
@@ -395,26 +216,11 @@ export function createAuraGenServer({
   wss.once("close", () => clearInterval(heartbeat));
 
   function start() {
-<<<<<<< HEAD
-    return new Promise((resolve) => {
-      httpServer.listen(port, () => {
-        const address = httpServer.address();
-        const boundPort = typeof address === "object" && address ? address.port : port;
-        console.log("=================================================================");
-        console.log(`🚀 AuraGen WebSocket Server listening on ws://localhost:${boundPort}`);
-        console.log(`🩺 Health check: http://localhost:${boundPort}/health`);
-        console.log(`📊 Session metrics API: http://localhost:${boundPort}/api/sessions/:sessionId/metrics`);
-        console.log(`🧠 Cognitive Load Threshold: ${threshold}`);
-        console.log(`⏱️  Generation Cooldown: ${cooldownMs}ms`);
-        console.log("=================================================================");
-        resolve({ port: boundPort, httpServer, wss, sessionStore });
-=======
     return new Promise((resolve, reject) => {
       httpServer.once("error", reject);
       httpServer.listen(port, host, () => {
         httpServer.off("error", reject);
-        resolve({ port: httpServer.address().port, httpServer, wss });
->>>>>>> e6820a9 (feat: implement AuraGen design system and secure wizard generation)
+        resolve({ port: httpServer.address().port, httpServer, wss, sessionStore });
       });
     });
   }

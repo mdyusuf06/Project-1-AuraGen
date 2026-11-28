@@ -133,7 +133,7 @@ test("generation rate limits apply across connections and session IDs", async (t
   let calls = 0;
   const port = await start(t, {
     limits: { generationsPerIp: 1 },
-    codeGenerator: async () => { calls++; return "fixture source"; }
+    codeGenerator: async () => { calls++; return "export default () => <div />;"; }
   });
   const first = await open(port);
   const second = await open(port);

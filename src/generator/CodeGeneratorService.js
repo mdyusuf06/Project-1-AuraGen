@@ -1,9 +1,9 @@
 import { AURAGEN_SYSTEM_PROMPT, buildUserPrompt } from '../prompts/systemPrompt.js';
 import { FEW_SHOT_EXAMPLES } from '../prompts/fewShotExamples.js';
+import { validate } from '../../backend/src/services/astValidator.js';
+import { DESIGN_SYSTEM_MODULES } from '../../backend/src/services/jsxDesignValidator.js';
 import {
-  validateOutputContract,
   validateInputSchema,
-  scanSecurityPatterns,
   validateGenerationResult
 } from '../validator/index.js';
 
@@ -41,7 +41,7 @@ export class CodeGeneratorService {
     // System instruction defining expert React UI engineer persona, component constraints, and security bounds
     messages.push({
       role: 'system',
-      content: this.systemPrompt
+      content: this.systemPrompt + `\nThe examples demonstrate layout and metadata. For componentCode, use only synchronous declarative JSX with literal props, approved Tailwind classes and a single default function export. Omit hooks, calls, event handlers, property access and spread syntax. Use approved native elements or named components imported from '${DESIGN_SYSTEM_MODULES[0]}'.`
     });
 
     // 2-3 Curated Few-shot demonstrations
@@ -71,7 +71,7 @@ export class CodeGeneratorService {
    * @param {Object} params
    * @param {Object} params.schema
    * @param {Object} [params.frictionContext]
-   * @returns {Promise<{success: boolean, data?: Object, errors?: string[], source?: string}>}
+   * @returns {Promise<{success: boolean, data?: Object, errors?: string[], issues?: Object[], source?: string}>}
    */
   async generateWizard({ schema, frictionContext }) {
     // 1. Validate input schema
@@ -107,8 +107,8 @@ export class CodeGeneratorService {
         const response = await this.llmClient.invoke(messages);
         rawResponseText = typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
         generationSource = 'openai-gpt4o';
-      } catch (err) {
-        console.warn(`[AuraGen] OpenAI invocation issue: ${err.message}. Gracefully switching to deterministic fallback generator.`);
+      } catch {
+        console.warn('[AuraGen] OpenAI invocation failed. Using the deterministic generator.');
         rawResponseText = this._generateDeterministicFallback(schema, frictionContext);
         generationSource = 'fallback-after-error';
       }
@@ -122,20 +122,30 @@ export class CodeGeneratorService {
     try {
       const cleanJson = this._cleanJsonMarkdown(rawResponseText);
       parsedOutput = JSON.parse(cleanJson);
-    } catch (parseErr) {
+    } catch {
       return {
         success: false,
-        errors: [`Failed to parse LLM response into JSON: ${parseErr.message}`, `Raw response: ${rawResponseText.slice(0, 300)}...`],
+        errors: ['The generator did not return valid JSON.'],
         source: generationSource
       };
     }
 
-    // 5. Validate Output Contract, Security, and Field Preservation
-    const validationResult = validateGenerationResult(schema, parsedOutput);
+    if (generationSource === 'openai-gpt4o') {
+      const result = validate(parsedOutput?.componentCode);
+      if (!result.ok) {
+        return {
+          success: false,
+          errors: result.errors.map(({ message }) => message),
+          issues: result.errors,
+          source: generationSource
+        };
+      }
+    }
+
+    const validationResult = validateGenerationResult(schema, parsedOutput, { scanCode: false });
     if (!validationResult.passed) {
       return {
         success: false,
-        data: parsedOutput,
         errors: validationResult.errors,
         source: generationSource
       };
@@ -171,8 +181,13 @@ export class CodeGeneratorService {
    * @private
    */
   _generateDeterministicFallback(schema, frictionContext) {
-    const componentName = `${schema.formName || 'Generated'}Wizard`;
+    const formName = typeof schema.formName === 'string' ? schema.formName.replace(/[^A-Za-z0-9_$]/g, '_') : '';
+    const componentName = `${/^[A-Za-z_$]/.test(formName) ? formName : 'Generated'}Wizard`;
     const fields = schema.fields || [];
+    const fieldData = JSON.stringify(JSON.stringify(fields.map(({ name, label, type, required, options }) => ({
+      name, label, type, required, options
+    })))).replace(/[<>&\u2028\u2029]/gu, (character) =>
+      '\\u' + character.charCodeAt(0).toString(16).padStart(4, '0'));
     
     // Group fields into 2 to 4 digestible steps (3 to 5 fields per step)
     const chunkSize = Math.max(2, Math.ceil(fields.length / 3));
@@ -195,11 +210,13 @@ export class CodeGeneratorService {
     const output = {
       componentName,
       componentCode: `import React, { useState } from 'react';
-import { Button, Input, Select, Card, StepProgress } from '@/design-system';
+import { Button, Input, Select, Card, StepProgress } from '${DESIGN_SYSTEM_MODULES[0]}';
+
+const fields = JSON.parse(${fieldData});
 
 export default function ${componentName}({ onSubmit }) {
   const [currentStep, setCurrentStep] = useState(0);
-  const [formData, setFormData] = useState(${JSON.stringify(fields.reduce((acc, f) => ({ ...acc, [f.name]: '' }), {}), null, 4)});
+  const [formData, setFormData] = useState(() => Object.fromEntries(fields.map((field) => [field.name, ''])));
   const [errors, setErrors] = useState({});
 
   const steps = ${JSON.stringify(stepList.map((s, idx) => ({ id: idx, title: s.title })), null, 2)};
@@ -216,12 +233,16 @@ export default function ${componentName}({ onSubmit }) {
       <StepProgress steps={steps} currentStep={currentStep} />
       <Card title={steps[currentStep]?.title}>
         <div className="space-y-4">
-          ${fields.map(f => {
-            if (f.type === 'select') {
-              return `<Select id="${f.name}" name="${f.name}" label="${f.label || f.name}" value={formData.${f.name}} options={${JSON.stringify(f.options || [])}} required={${Boolean(f.required)}} onChange={(e) => handleChange('${f.name}', e.target.value)} />`;
-            }
-            return `<Input id="${f.name}" name="${f.name}" type="${f.type || 'text'}" label="${f.label || f.name}" value={formData.${f.name}} required={${Boolean(f.required)}} onChange={(e) => handleChange('${f.name}', e.target.value)} />`;
-          }).join('\n          ')}
+          {fields.map((field) => {
+            const props = {
+              id: field.name, name: field.name, label: field.label || field.name,
+              value: formData[field.name], required: Boolean(field.required),
+              onChange: (event) => handleChange(field.name, event.target.value)
+            };
+            return field.type === 'select'
+              ? <Select key={field.name} {...props} options={field.options || []} />
+              : <Input key={field.name} {...props} type={field.type || 'text'} />;
+          })}
         </div>
       </Card>
       <div className="flex justify-between items-center pt-4">

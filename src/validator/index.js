@@ -55,6 +55,9 @@ export function validateOutputContract(output) {
 
   if (!Array.isArray(output.steps)) {
     errors.push('steps must be an array');
+  } else if (output.steps.some((step) => !Array.isArray(step?.fields) ||
+      step.fields.some((field) => typeof field !== 'string' || !field.trim()))) {
+    errors.push('Each step must list its field names');
   }
 
   if (!output.fieldMapping || typeof output.fieldMapping !== 'object') {
@@ -89,7 +92,7 @@ export function validateInputSchema(schema) {
   } else {
     const seenNames = new Set();
     schema.fields.forEach((field, index) => {
-      if (!field.name) {
+      if (!field || typeof field.name !== 'string' || !field.name.trim()) {
         errors.push(`Field at index ${index} is missing "name" property`);
       } else {
         if (seenNames.has(field.name)) {
@@ -168,7 +171,7 @@ export function validateFieldPreservation(originalSchema, generatedOutput) {
  * @param {Object} generatedOutput
  * @returns {{passed: boolean, errors: string[]}}
  */
-export function validateGenerationResult(originalSchema, generatedOutput) {
+export function validateGenerationResult(originalSchema, generatedOutput, { scanCode = true } = {}) {
   const allErrors = [];
 
   const contractCheck = validateOutputContract(generatedOutput);
@@ -176,12 +179,11 @@ export function validateGenerationResult(originalSchema, generatedOutput) {
     allErrors.push(...contractCheck.errors);
   }
 
-  const securityCheck = scanSecurityPatterns(generatedOutput?.componentCode);
-  if (!securityCheck.isSecure) {
-    allErrors.push(...securityCheck.violations);
+  if (scanCode) {
+    allErrors.push(...scanSecurityPatterns(generatedOutput?.componentCode).violations);
   }
 
-  if (originalSchema && generatedOutput?.validationSummary?.isValid !== false) {
+  if (contractCheck.isValid && originalSchema && generatedOutput.validationSummary.isValid !== false) {
     const preservationCheck = validateFieldPreservation(originalSchema, generatedOutput);
     if (!preservationCheck.isPreserved) {
       allErrors.push(`Fields missing from generated output: ${preservationCheck.missingFields.join(', ')}`);

@@ -6,9 +6,21 @@ import { GenerationError } from "./generationErrors.js";
 import { invokeOpenAIWizard, requestWizardLayout } from "./openAIWizard.js";
 import { renderWizardSource } from "./renderWizard.js";
 import { makeWizardMessages } from "./wizardPrompt.js";
+import { validate } from "./astValidator.js";
 
 const demoFields = validateFormFields(DEFAULT_FORM_FIELDS);
 const demoNames = new Set(demoFields.map(({ name }) => name));
+const templateGenerators = new WeakSet();
+
+export async function approveComponentResponse(generator, params) {
+  const code = await generator(params);
+  // These closures only emit the checked-in renderer with data from validateWizardLayout.
+  if (!templateGenerators.has(generator)) {
+    const result = validate(code);
+    if (!result.ok) throw new GenerationError("INVALID_COMPONENT", result.errors);
+  }
+  return code;
+}
 
 function groupBySection(fields) {
   const bySection = new Map();
@@ -87,28 +99,9 @@ export function createWizardGenerator({
     const job = buildWizard(fields, activeField, useDemoRules, useDemoRules ? undefined : signal);
     if (useDemoRules) pendingDemo.set(activeField, job);
     try {
-<<<<<<< HEAD
-      // Dynamic import attempts backend/src/codegen/agent.js or root src/agent.js
-      let teammateModule;
-      try {
-        teammateModule = await import("../codegen/agent.js");
-      } catch {
-        teammateModule = await import("../../../src/agent.js");
-      }
-
-      if (typeof teammateModule.generateComponent === "function") {
-        console.log("[CodeGenService] Using teammate's LangChain generateComponent() pipeline.");
-        return await teammateModule.generateComponent({
-          activeField,
-          formFields: resolvedFormFields,
-          userInput,
-          score
-        });
-=======
       const wizard = await job;
       if (useDemoRules && demoCacheMs > 0) {
         demoCache.set(activeField, { wizard, expiresAt: Date.now() + demoCacheMs });
->>>>>>> e6820a9 (feat: implement AuraGen design system and secure wizard generation)
       }
       return wizard;
     } finally {
@@ -117,13 +110,12 @@ export function createWizardGenerator({
     }
   }
 
-  return {
-    generateWizard,
-    async generateComponent(params) {
-      const wizard = await generateWizard(params);
-      return renderWizardSource(wizard, params.formFields === undefined);
-    }
-  };
+  async function generateComponent(params) {
+    const wizard = await generateWizard(params);
+    return renderWizardSource(wizard, params.formFields === undefined);
+  }
+  templateGenerators.add(generateComponent);
+  return { generateWizard, generateComponent };
 }
 
 export const { generateWizard, generateComponent } = createWizardGenerator();

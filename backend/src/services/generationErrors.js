@@ -1,6 +1,7 @@
 const errors = {
   INVALID_FORM: "Invalid form schema.",
   INVALID_OUTPUT: "The model returned an invalid wizard layout.",
+  INVALID_COMPONENT: "The generated component failed validation.",
   GENERATION_BUSY: "Wizard generation is busy. Try again shortly.",
   GENERATION_CANCELLED: "Wizard generation was cancelled.",
   OPENAI_AUTH: "The wizard provider could not authenticate.",

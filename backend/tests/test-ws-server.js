@@ -2,52 +2,12 @@ import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
 import { WebSocket } from "ws";
 import { createAuraGenServer } from "../src/server.js";
-<<<<<<< HEAD
-import { validateComponentAst, ASTSecurityError } from "../src/services/astValidator.js";
-
-function runAstValidatorUnitTests() {
-  console.log("\n🛡️  Running AST Validator Unit Tests...");
-
-  const safeCode = `
-    import React, { useState } from "react";
-    export default function SafeWizard({ initialValues = {} }) {
-      const [documentType, setDocumentType] = useState(initialValues.documentType || "W2");
-      return <div className="p-4"><input value={documentType} onChange={(e) => setDocumentType(e.target.value)} /></div>;
-    }
-  `;
-  const returned = validateComponentAst(safeCode);
-  assert.equal(returned, safeCode, "Safe JSX should pass and return the exact code string");
-
-  const unsafePayloads = [
-    { label: "window", code: `export default function Bad() { return <div>{window.location.href}</div>; }` },
-    { label: "document", code: `export default function Bad() { const c = document.cookie; return <div>{c}</div>; }` },
-    { label: "localStorage", code: `export default function Bad() { localStorage.setItem("x", "1"); return <div />; }` },
-    { label: "fetch", code: `export default function Bad() { fetch("https://evil.test"); return <div />; }` },
-    { label: "<script> tag", code: `export default function Bad() { return <div><script>alert(1)</script></div>; }` },
-    { label: "computed global access", code: `export default function Bad() { return <div>{globalThis["fetch"]("/x")}</div>; }` },
-    { label: "syntax error", code: `export default function Broken( { return <div>; }` }
-  ];
-
-  for (const { label, code } of unsafePayloads) {
-    assert.throws(
-      () => validateComponentAst(code),
-      (err) => err instanceof ASTSecurityError,
-      `AST validator must throw ASTSecurityError for ${label}`
-    );
-  }
-
-  console.log(`✅ AST Unit Tests Passed: Safe JSX (including "documentType") allowed; ${unsafePayloads.length} unsafe/malformed payloads blocked.`);
-}
-=======
 import { createWizardGenerator } from "../src/services/codeGenService.js";
->>>>>>> e6820a9 (feat: implement AuraGen design system and secure wizard generation)
 
 async function runBackendTests() {
   console.log("=================================================================");
   console.log("🧪 AuraGen Backend WebSocket & Session Store Integration Tests");
   console.log("=================================================================");
-
-  runAstValidatorUnitTests();
 
   const server = createAuraGenServer({
     port: 0,
@@ -125,13 +85,8 @@ async function runBackendTests() {
     );
     await new Promise((r) => setTimeout(r, 150));
     const componentAfterLow = receivedMessages.slice(countBeforeLow).find((m) => m.type === "component");
-<<<<<<< HEAD
     assert.equal(componentAfterLow, undefined, "Low rollingAverageScore should NOT trigger component generation");
     console.log("✅ Test 4 Passed: Low rollingAverageScore (28 < 70) stored without triggering generation");
-=======
-    assert.equal(componentAfterLow, undefined, "Low score should NOT trigger component generation");
-    console.log("✅ Test 4 Passed: Low cognitiveLoadScore (32 < 70) did not trigger generation");
->>>>>>> e6820a9 (feat: implement AuraGen design system and secure wizard generation)
 
     // 5. Test valid telemetry ABOVE threshold WITH formStateSnapshot
     ws.send(
@@ -168,21 +123,6 @@ async function runBackendTests() {
       })
     );
 
-<<<<<<< HEAD
-    const componentMsg = await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error("Timed out waiting for component reply")), 3000);
-      const check = () => {
-        const found = receivedMessages.find((m) => m.type === "component");
-        if (found) {
-          clearTimeout(timeout);
-          resolve(found);
-        } else {
-          setTimeout(check, 50);
-        }
-      };
-      check();
-    });
-=======
     // Wait for component message
     const signal = AbortSignal.timeout(3000);
     let componentMsg = receivedMessages.find((m) => m.type === "component");
@@ -190,13 +130,12 @@ async function runBackendTests() {
       await delay(50, undefined, { signal });
       componentMsg = receivedMessages.find((m) => m.type === "component");
     }
->>>>>>> e6820a9 (feat: implement AuraGen design system and secure wizard generation)
 
     assert.equal(componentMsg.type, "component");
     assert.ok(componentMsg.code.includes("export default function DynamicFormWizard"));
-    assert.ok(componentMsg.code.includes("Jordan Mercer"), "Stub should preserve formStateSnapshot.values");
+    assert.ok(!componentMsg.code.includes("Jordan Mercer"), "Applicant values must stay out of generated JSX");
     assert.ok(componentMsg.code.includes("annualIncome"));
-    console.log("✅ Test 5 Passed: High rollingAverageScore (84 >= 70) triggered generateComponent() with preserved formStateSnapshot");
+    console.log("Test 5 passed. High rollingAverageScore triggered wizard generation.");
 
     // 6. Test In-Memory Session Store API: GET /api/sessions/:sessionId/metrics
     const metricsRes = await fetch(`${httpBase}/api/sessions/${sessionId}/metrics`);

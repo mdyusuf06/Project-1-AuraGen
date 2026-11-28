@@ -9,28 +9,16 @@
 
 Standard enterprise forms are rigid. When a user struggles on a complex financial disclosure form, AuraGen tracks behavioral friction signals (mouse velocity, hesitation time, rage clicks, click-error rate) to calculate a real-time **Cognitive Load Score (0–100)**. When the score crosses the configured threshold (`>= 70`), the Node.js WebSocket server invokes `generateComponent()` and pushes a custom, simplified React wizard component (`{ type: "component", code }`) back to the browser.
 
-<<<<<<< HEAD
 ### Week 1–2/3 Bridge Architecture
 - **Backend (`/backend`)**:
   - **Zod Payload Validation (`src/validators/telemetryValidator.js`)**: Strict `zod` schema validating telemetry packets (`cursor`, `metrics`, `instantScore`, `rollingAverageScore`, `activeFieldId`, `formStateSnapshot`).
   - **In-Memory LRU Session Store (`src/store/sessionStore.js`)**: Aggregates per-`sessionId` telemetry over time, tracks per-field friction hotspots, and exposes `GET /api/sessions/:sessionId/metrics` (plus `GET /api/sessions`).
-  - **Code-Gen Trigger (`src/server.js`)**: Evaluates `rollingAverageScore >= threshold`, passes preserved `formStateSnapshot.values` and `domContext` into `generateComponent()`, and returns `{ type: "component", code }`.
+  - **Code-Gen Trigger (`src/server.js`)**: Evaluates `rollingAverageScore >= threshold`, validates the generated wizard and returns `{ type: "component", code }`.
 - **Frontend (`/frontend`)**:
   - **WebSocket State Machine (`src/hooks/useWebSocket.js` & `src/services/wsService.js`)**: Explicit states (`CONNECTING`, `CONNECTED`, `RECONNECTING`, `DISCONNECTED`), exponential backoff with jitter, `sendTelemetry`, and `onMessage`.
   - **5-Second Sliding Window Telemetry & State Serialization (`src/hooks/useTelemetry.js`)**: Tracks velocity, hesitation, rage clicks, click errors, computes both `instantScore` and 5s `rollingAverageScore` to prevent false positives, and serializes `formStateSnapshot` (typed values + DOM context) when threshold is breached.
   - **Field-Level Financial Form (`src/components/FinancialForm.jsx`)**: 21-field, 5-section financial disclosure form (`Personal`, `Employment`, `Income`, `Assets`, `Liabilities`) with `onFocus`, `onBlur`, and `onMouseMove` tracking.
   - **Live Mouse Trajectory Heatmap & Floating Debug HUD (`src/components/TelemetryHUD.jsx`)**: Togglable full-screen HTML5 `<canvas>` (`pointer-events: none`) rendering smooth green-to-red cursor trajectories + a floating corner Debug HUD with live metrics and Session Store API polling.
-=======
-### Week 1 Scope
-- **Backend (`/backend`)** validates the form and telemetry, applies the cognitive-load threshold, and generates a wizard layout locally or through LangChain and OpenAI. A fixed template converts the validated layout to the `{ type: "component", code }` response.
-- **Frontend (`/frontend`)**: Next.js (App Router) + Tailwind CSS app featuring:
-  - Resilient WebSocket client service & `useWebSocket` React hook (auto-reconnect with exponential backoff, connection status, `sendTelemetry`, `onMessage`).
-  - Behavioral `useTelemetry` hook tracking mouse velocity, field hesitation, rage clicks, and click errors.
-  - Complex 21-field, 5-section financial application (`Personal`, `Employment`, `Income`, `Assets`, `Liabilities`) with full client-side validation.
-  - Live Telemetry HUD & Week 1 Code Inspector Drawer.
-
-*(Note: Babel AST validation, in-browser dynamic compilation, DOM state preservation, Framer Motion morphing, and streaming fallbacks belong to Weeks 2–4.)*
->>>>>>> e6820a9 (feat: implement AuraGen design system and secure wizard generation)
 
 ---
 
@@ -122,9 +110,10 @@ When `cognitiveLoadScore >= COGNITIVE_LOAD_THRESHOLD` (default `70`):
 ### 1. Install All Dependencies
 From the monorepo root:
 ```bash
+npm ci
 npm run install:all
 ```
-*(Or manually run `npm install` inside both `backend/` and `frontend/`.)*
+To install from the lockfiles in all three directories, run `npm ci`, `npm --prefix backend ci`, and `npm --prefix frontend ci`.
 
 ### 2. Verify Environment Files
 Create local config files from the templates if you need to override the defaults.
@@ -164,7 +153,7 @@ npm run dev
 ```bash
 npm run test:backend
 ```
-Tests cover the WebSocket protocol, backend startup, provider failures, and ten form scenarios with deterministic provider responses.
+Tests cover the WebSocket protocol, backend startup, provider failures, ten form scenarios, and the generated JSX security and design rules. See the [implementation and test audit](backend/WIZARD.md#security-verification-audit).
 
 ### Frontend Production Build Check
 ```bash

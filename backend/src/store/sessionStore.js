@@ -52,7 +52,7 @@ export function createSessionStore({
         hesitationMs: 0
       },
       latest: null,
-      fieldStats: {},
+      fieldStats: Object.create(null),
       lastFormStateSnapshot: null,
       history: []
     };

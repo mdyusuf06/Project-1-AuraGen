@@ -45,9 +45,9 @@ const server = http.createServer(async (req, res) => {
 
         res.writeHead(result.success ? 200 : 400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(result));
-      } catch (err) {
+      } catch {
         res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, errors: [err.message] }));
+        res.end(JSON.stringify({ success: false, errors: ['Wizard generation could not be completed.'] }));
       }
     });
     return;
@@ -91,8 +91,8 @@ wss.on('connection', (ws) => {
       } else {
         ws.send(JSON.stringify({ type: 'ACK', received: true }));
       }
-    } catch (err) {
-      ws.send(JSON.stringify({ type: 'ERROR', message: err.message }));
+    } catch {
+      ws.send(JSON.stringify({ type: 'ERROR', message: 'Wizard generation could not be completed.' }));
     }
   });
 
